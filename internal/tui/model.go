@@ -41,6 +41,7 @@ type screen int
 const (
 	screenPicker screen = iota
 	screenImport
+	screenImportURIs
 	screenInput
 	screenPassword
 	screenConnecting
@@ -103,6 +104,11 @@ type switchedMsg struct {
 	err      error
 }
 
+type userUpsertMsg struct {
+	username string
+	err      error
+}
+
 type mongoTreePlace struct {
 	path       []string
 	openObject string
@@ -128,9 +134,14 @@ type Model struct {
 
 	profiles []config.Profile
 	cursor   int
-	// importFiles/importCursor drive the ~/.mongo* import picker.
+	// importFiles/importCursor drive the ~/.mongo* import picker. importUser
+	// marks it as importing a user (from the tree) instead of profiles (from the
+	// picker); importURIs is the second level: the URIs found in the chosen file
+	// when there is more than one to pick from.
 	importFiles  []string
+	importURIs   []string
 	importCursor int
+	importUser   bool
 
 	mongoURI  string
 	profileID string
@@ -369,6 +380,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = status
 		return m, nil
 
+	case userUpsertMsg:
+		if msg.err != nil {
+			m.status = "user " + msg.username + " failed"
+			m.messages = []string{msg.err.Error()}
+			m.tab = tabMessages
+			return m, nil
+		}
+		m.status = "user " + msg.username + " created"
+		restored, cmd := m.revealUser(msg.username)
+		return restored, cmd
+
 	case switchedMsg:
 		if msg.err != nil {
 			m.messages = []string{msg.err.Error()}
@@ -562,6 +584,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case screenImport:
 		return m.handleImportKey(key)
 
+	case screenImportURIs:
+		return m.handleImportURIsKey(key)
+
 	case screenInput:
 		switch key {
 		case "esc":
@@ -655,7 +680,7 @@ func (m Model) handlePickerKey(key string) (tea.Model, tea.Cmd) {
 			m.toggleFavorite(chosen.ID)
 		}
 	case m.keys.Get(config.ActionImportProfiles):
-		return m.openImportFiles()
+		return m.openImportFiles(false)
 	case "q":
 		return m, tea.Quit
 	}
@@ -1058,6 +1083,43 @@ func (m Model) switchCmd(database string) tea.Cmd {
 	}
 }
 
+// upsertUserCmd runs UpsertUser on the live session.
+func (m Model) upsertUserCmd(username, password, database, authSource string) tea.Cmd {
+	sess := m.sess
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+		defer cancel()
+		cat, ok := sess.(engine.Catalog)
+		if !ok {
+			return userUpsertMsg{username: username, err: errors.New("user management is not available")}
+		}
+		return userUpsertMsg{username: username, err: cat.UpsertUser(ctx, username, password, database, authSource)}
+	}
+}
+
+// revealUser reloads the Users folder and moves the cursor onto username, so
+// the freshly imported user is visible without a manual reload.
+func (m Model) revealUser(username string) (Model, tea.Cmd) {
+	if m.tree == nil {
+		return m, nil
+	}
+	node := m.treeChild("Users")
+	if node == nil {
+		return m, nil
+	}
+	node.loaded = false
+	node.children = nil
+	node.expanded = true
+	node.err = ""
+	m.pendingPath = []string{"Users", username}
+	m.pendingOpen = ""
+	m.pendingWaiting = ""
+	m.pendingFinal = ""
+	m.tree.rebuild()
+	restored, cmd := m.continuePath()
+	return restored.(Model), cmd
+}
+
 // treeSelect moves the cursor to the first visible row with this title.
 func (m *Model) treeSelect(title string) bool {
 	if m.tree == nil {
@@ -1083,6 +1145,14 @@ func (m Model) treeChild(title string) *treeNode {
 		}
 	}
 	return nil
+}
+
+// currentTreeNode returns the selected tree row, or nil when there is no tree.
+func (m Model) currentTreeNode() *treeNode {
+	if m.tree == nil {
+		return nil
+	}
+	return m.tree.current()
 }
 
 // focusNext moves focus clockwise: tree, result, editor.
@@ -1177,6 +1247,13 @@ func (m Model) handleTreeKey(key string) (tea.Model, tea.Cmd) {
 	case m.keys.Is(config.ActionAlterTemplate, key):
 		if node := m.tree.current(); node != nil {
 			return m.insertDdl(node, ddlAlter), nil
+		}
+		return m, nil
+	case m.keys.Is(config.ActionImportProfiles, key):
+		// On the Users folder the same import key creates a user from a file;
+		// elsewhere in the tree it is a no-op.
+		if node := m.tree.current(); node != nil && node.kind == nodeFolder && node.title == "Users" {
+			return m.openImportFiles(true)
 		}
 		return m, nil
 	}

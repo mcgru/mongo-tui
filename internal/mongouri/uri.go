@@ -140,3 +140,13 @@ func (u URI) Database() string {
 	}
 	return path
 }
+
+// AuthSource returns the authSource query parameter, which names the database a
+// user is authenticated against (and, when creating a user, where it lives).
+func (u URI) AuthSource() string {
+	q, err := url.ParseQuery(u.Query)
+	if err != nil {
+		return ""
+	}
+	return q.Get("authSource")
+}

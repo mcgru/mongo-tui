@@ -124,4 +124,7 @@ type Catalog interface {
 	// keys and JSON Schema properties observed in the collection card.
 	Fields(ctx context.Context, database, collection string) ([]FieldInfo, error)
 	CollectionCard(ctx context.Context, database, collection string) (CollectionCard, error)
+	// UpsertUser creates a MongoDB user with the readWrite role on database, in
+	// the authSource database, or updates the user when it already exists.
+	UpsertUser(ctx context.Context, username, password, database, authSource string) error
 }

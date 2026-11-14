@@ -1066,3 +1066,34 @@ MongoDB и драйвер такие URI принимают, а `NormalizeMongoU
   `internal/mongouri`. Тесты: разбор пароля, `PasswordFromFile`, `SourceFile` в
   импорте, пароль не попадает в state, `connectPassword` для всех веток.
 
+### Пользователь
+
+> новая фича: когда подключены к базе, когда нет unauthorized на Users (или Roles), значит мы можем редактировать Users - тогда при нажатии i нужно вызывать окошко выбора файлов ~/.mongo* , и после выбора - импортировать из файла - user, password, database, authsource - и создать/обновить пользователя пока что с правами readWrite на ту базу, которая указана в файле. Если база не указана, то на текущую выбранную базу. Ну и после импорта навестись на того пользователя.
+
+Развилки: триггер — только узел Users; несколько URI — список для выбора;
+authSource по умолчанию — admin.
+
+### Ответ
+
+На узле Users в дереве клавиша `i` теперь импортирует пользователя MongoDB из
+файла `~/.mongo*`.
+
+- `engine.Catalog.UpsertUser(ctx, user, password, database, authSource)`: в
+  `internal/mongo` — `createUser` с `roles: [{readWrite, db:database}]` против
+  БД `authSource`; код 51003 «already exists» переключает на `updateUser` (новый
+  pwd + роли).
+- `mongouri.URI.AuthSource()` — вынуть `authSource` из query.
+- `i` (тот же `import_profiles`, без нового action и конфликта ключей) на папке
+  Users открывает выбор `~/.mongo*` в режиме пользователя; в picker остался
+  импорт профилей. Из URI берутся `user`, `password`, `database` (путь; пусто —
+  текущая выбранная база), `authSource` (пусто — `admin`).
+- Несколько URI с паролем в файле — второй экран выбора (`screenImportURIs`).
+- Пароль летит напрямую в `createUser`/`updateUser`, в state не пишется. После
+  успеха узел Users перезагружается и курсор встаёт на пользователя
+  (`revealUser` через `continuePath`).
+- README EN/RU, PRD §4.2 и подпись `import_profiles` в образце конфига
+  обновлены. Тесты: `AuthSource`, живой `UpsertUser` (create/update/drop),
+  `i` на Users и no-op вне Users, импорт по одному/нескольким URI, дефолты
+  `database`→текущая и `authSource`→admin.
+
+

@@ -62,7 +62,7 @@ var actionDoc = map[Action]string{
 	ActionHistory:         "query history",
 	ActionHelp:            "help; F1 works too, unless the terminal keeps it",
 	ActionSaveProfile:     "save the current connection as a profile",
-	ActionImportProfiles:  "profile picker: import MongoDB URIs from a ~/.mongo* file",
+	ActionImportProfiles:  "import from a ~/.mongo* file: picker — URIs as profiles; tree on Users — create/update a user",
 	ActionConnect:         "back to the connection picker",
 	ActionRefresh:         "reload the selected tree node",
 	ActionFocus:           "focus next: tree, result, editor",

@@ -31,7 +31,7 @@ func TestImportProfilesFromMongoFile(t *testing.T) {
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	m = updated.(Model)
 
-	m, _ = m.openImportFiles()
+	m, _ = m.openImportFiles(false)
 	if m.scr != screenImport {
 		t.Fatalf("screen = %v, want import", m.scr)
 	}
@@ -95,12 +95,12 @@ func TestImportSkipsDuplicates(t *testing.T) {
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	m = updated.(Model)
 
-	m, _ = m.openImportFiles()
+	m, _ = m.openImportFiles(false)
 	m, _ = press(t, m, tea.KeyEnter)
 	if len(m.opts.State.Profiles) != 1 {
 		t.Fatalf("profiles = %+v, want 1", m.opts.State.Profiles)
 	}
-	m, _ = m.openImportFiles()
+	m, _ = m.openImportFiles(false)
 	m, _ = press(t, m, tea.KeyEnter)
 	if len(m.opts.State.Profiles) != 1 {
 		t.Fatalf("profiles after duplicate import = %+v, want 1", m.opts.State.Profiles)

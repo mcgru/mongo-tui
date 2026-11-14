@@ -64,6 +64,24 @@ func TestParseDecodesPassword(t *testing.T) {
 	}
 }
 
+func TestAuthSource(t *testing.T) {
+	u, err := Parse(`mongodb://ann:secret@host/db?authSource=admin&replicaSet=rs0`)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if got := u.AuthSource(); got != "admin" {
+		t.Fatalf("AuthSource() = %q, want admin", got)
+	}
+
+	u, err = Parse(`mongodb://ann:secret@host/db`)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if got := u.AuthSource(); got != "" {
+		t.Fatalf("AuthSource() without the param = %q, want empty", got)
+	}
+}
+
 func TestParseRejectsBadURIs(t *testing.T) {
 	for _, raw := range []string{
 		`postgresql://db/app`,

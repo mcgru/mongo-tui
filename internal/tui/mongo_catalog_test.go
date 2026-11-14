@@ -19,6 +19,10 @@ type fakeMongoCatalog struct {
 	users       []engine.Item
 	roles       []engine.Item
 	card        engine.CollectionCard
+	upsertUser  struct {
+		username, password, database, authSource string
+		err                                      error
+	}
 }
 
 func (f *fakeMongoCatalog) Databases(context.Context) ([]engine.Item, error) {
@@ -46,6 +50,14 @@ func (f *fakeMongoCatalog) Fields(context.Context, string, string) ([]engine.Fie
 
 func (f *fakeMongoCatalog) CollectionCard(context.Context, string, string) (engine.CollectionCard, error) {
 	return f.card, nil
+}
+
+func (f *fakeMongoCatalog) UpsertUser(_ context.Context, username, password, database, authSource string) error {
+	f.upsertUser.username = username
+	f.upsertUser.password = password
+	f.upsertUser.database = database
+	f.upsertUser.authSource = authSource
+	return f.upsertUser.err
 }
 
 func TestMongoTreeLoadsCatalog(t *testing.T) {

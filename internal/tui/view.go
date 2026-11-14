@@ -53,6 +53,8 @@ func (m Model) View() string {
 		return m.viewPicker()
 	case screenImport:
 		return m.viewImport()
+	case screenImportURIs:
+		return m.viewImportURIs()
 	case screenInput:
 		return m.viewPrompt(
 			"New connection",
@@ -550,17 +552,23 @@ func (m Model) footerKeys() string {
 			key(config.ActionImportProfiles) + " import  " + key(config.ActionQuit) + " quit"
 	case screenImport:
 		return "↑↓ choose  Enter import  Esc back  " + key(config.ActionQuit) + " quit"
+	case screenImportURIs:
+		return "↑↓ choose  Enter import  Esc back  " + key(config.ActionQuit) + " quit"
 
 	case screenMain:
 		help := "  " + key(config.ActionHelp) + " help"
 		if m.isMongo() {
 			switch m.focus {
 			case focusTree:
-				return "↑↓ move  →/Enter open  ← collapse  " +
+				base := "↑↓ move  →/Enter open  ← collapse  " +
 					key(config.ActionSelectTemplate) + " find  " + key(config.ActionPeek) + " peek  " +
 					key(config.ActionCreateTemplate) + " index  " + key(config.ActionDropTemplate) + " drop  " +
 					key(config.ActionAlterTemplate) + " collMod  " + key(config.ActionInsertName) + " insert  " +
-					key(config.ActionRefresh) + " reload  " + key(config.ActionFocus) + " focus" + help
+					key(config.ActionRefresh) + " reload  " + key(config.ActionFocus) + " focus"
+				if node := m.currentTreeNode(); node != nil && node.kind == nodeFolder && node.title == "Users" {
+					base += "  " + key(config.ActionImportProfiles) + " import"
+				}
+				return base + help
 			case focusGrid:
 				return "↑↓ move  PgUp/PgDn document  " + key(config.ActionCopyCell) +
 					" cell  " + key(config.ActionCopyRow) + " row  " +

@@ -111,6 +111,13 @@ limited find, `+` inserts createIndex/createCollection, `-` inserts drop or
 dropIndex, `=` inserts collMod; `.` inserts the selected collection name as a
 JSON string.
 
+`i` on the **Users** folder imports a MongoDB user from a `~/.mongo*` file: the
+username, password, database and `authSource` are read from the chosen URI, and
+the user is created (or updated) with the `readWrite` role on that database —
+or on the current database when the URI has none. If the file holds several
+URIs, a second list asks which one to import. The password goes straight to
+`createUser`/`updateUser` and is never written to the state file.
+
 ## Keys and layout
 
 ```
