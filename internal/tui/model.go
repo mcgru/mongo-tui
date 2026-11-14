@@ -244,7 +244,7 @@ func New(opts Options) Model {
 // Init starts the first connection when the command line asked for one.
 func (m Model) Init() tea.Cmd {
 	if m.scr == screenConnecting {
-		return tea.Batch(m.spin.Tick, m.connectCmd(""))
+		return tea.Batch(m.spin.Tick, m.connectCmd(m.connectPassword()))
 	}
 	return nil
 }
@@ -606,7 +606,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.mongoURI = m.pendingURI
 			m.err = nil
 			m.scr = screenConnecting
-			return m, tea.Batch(m.spin.Tick, m.connectCmd(""))
+			return m, tea.Batch(m.spin.Tick, m.connectCmd(m.connectPassword()))
 		case "esc", "q":
 			m.err = nil
 			m.scr = screenPicker
@@ -645,7 +645,7 @@ func (m Model) handlePickerKey(key string) (tea.Model, tea.Cmd) {
 		m.readOnly = m.opts.Config.ReadOnly || m.opts.CLI.ReadOnly || chosen.ReadOnlyDefault
 		m.pendingURI = m.mongoURI
 		m.scr = screenConnecting
-		return m, tea.Batch(m.spin.Tick, m.connectCmd(""))
+		return m, tea.Batch(m.spin.Tick, m.connectCmd(m.connectPassword()))
 	case "d":
 		if chosen := m.profiles[m.cursor]; chosen.ID != "" {
 			m.confirmDelete = chosen.ID
@@ -1507,6 +1507,22 @@ func profileURI(p config.Profile) (string, bool) {
 		return p.URI, true
 	}
 	return "", false
+}
+
+// connectPassword resolves the password for the selected profile from its
+// source file, when it was imported from one. It returns "" when there is no
+// profile, no source file or no matching URI; the empty value falls through to
+// the normal password prompt.
+func (m Model) connectPassword() string {
+	if m.profileID == "" {
+		return ""
+	}
+	p, ok := m.opts.State.Find(m.profileID)
+	if !ok || p.SourceFile == "" {
+		return ""
+	}
+	pw, _ := config.PasswordFromFile(p.SourceFile, p.URI)
+	return pw
 }
 
 func needsPassword(err error) bool {

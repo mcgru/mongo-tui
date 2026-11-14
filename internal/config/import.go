@@ -16,6 +16,10 @@ import (
 // angle brackets are allowed so placeholder userinfo can be stripped later.
 var mongoURIRe = regexp.MustCompile(`mongodb(?:\+srv)?://[^\s"'` + "`" + `#]+`)
 
+// maxSourceFileBytes keeps a runaway history file from being read into memory
+// when re-reading a password for a connection.
+const maxSourceFileBytes = 4 << 20
+
 // MongoFiles lists regular files matching ~/.mongo* (mongosh history,
 // .mongorc.js, old mongo shell history). Directories such as ~/.mongodb are
 // skipped. Newest files come first, then by name.
@@ -95,4 +99,34 @@ func (s *State) HasMongoURI(uri string) bool {
 		}
 	}
 	return false
+}
+
+// PasswordFromFile re-reads a ~/.mongo* file and returns the password of the
+// URI that normalizes to profileURI. It is the .pgpass-like companion of the
+// import: the profile stores only the file path, and the password is read from
+// the file when the connection is opened. A missing file, an unreadable or
+// changed URI and an empty password all report "not found", which lets the
+// caller fall back to the password prompt.
+func PasswordFromFile(path, profileURI string) (string, bool) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", false
+	}
+	if info.Size() > maxSourceFileBytes {
+		return "", false
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", false
+	}
+	for _, raw := range ParseMongoURIs(data) {
+		u, err := mongouri.Parse(raw)
+		if err != nil || !u.HasPassword || u.Password == "" {
+			continue
+		}
+		if u.WithoutPassword() == profileURI {
+			return u.Password, true
+		}
+	}
+	return "", false
 }

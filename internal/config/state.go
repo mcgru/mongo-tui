@@ -22,7 +22,11 @@ type Profile struct {
 	Engine string `json:"engine,omitempty"`
 	// URI is a MongoDB URI without a password. PostgreSQL profiles use the
 	// individual fields below instead.
-	URI             string     `json:"uri,omitempty"`
+	URI string `json:"uri,omitempty"`
+	// SourceFile is the path of the ~/.mongo* file this profile was imported
+	// from. It is not a secret: the password is re-read from that file at
+	// connect time, .pgpass-style, and never written to state.
+	SourceFile      string     `json:"source_file,omitempty"`
 	Host            string     `json:"host,omitempty"`
 	Port            int        `json:"port,omitempty"`
 	Database        string     `json:"database,omitempty"`

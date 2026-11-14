@@ -11,6 +11,9 @@ func TestParseMultiHost(t *testing.T) {
 	if u.Scheme != "mongodb" || u.User != "uuu" || !u.HasPassword {
 		t.Fatalf("parsed = %+v", u)
 	}
+	if u.Password != "pppp" {
+		t.Fatalf("password = %q", u.Password)
+	}
 	if u.Host != "mongod1:27021,mongod2:27022,mongod3:27023" {
 		t.Fatalf("host = %q", u.Host)
 	}
@@ -46,8 +49,18 @@ func TestParsePlaceholderUserinfo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
-	if u.User != "<credentials>" || u.HasPassword {
+	if u.User != "<credentials>" || u.HasPassword || u.Password != "" {
 		t.Fatalf("parsed = %+v", u)
+	}
+}
+
+func TestParseDecodesPassword(t *testing.T) {
+	u, err := Parse(`mongodb://ann:p%40ss%3Aword@db.example:27017/app`)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if u.User != "ann" || u.Password != "p@ss:word" {
+		t.Fatalf("user/password = %q/%q", u.User, u.Password)
 	}
 }
 

@@ -17,8 +17,12 @@ import (
 
 // URI is one parsed MongoDB connection string.
 type URI struct {
-	Scheme      string
-	User        string
+	Scheme string
+	User   string
+	// Password is the decoded userinfo password. It is parsed only so a
+	// profile imported from a history file can re-authenticate without a
+	// prompt; it must never be logged, serialized or stored.
+	Password    string
 	Host        string
 	Path        string // without the leading slash
 	Query       string // without the leading ?
@@ -55,12 +59,16 @@ func Parse(raw string) (URI, error) {
 		u.Host = authority[at+1:]
 		if colon := strings.IndexByte(userinfo, ':'); colon >= 0 {
 			u.User = userinfo[:colon]
+			u.Password = userinfo[colon+1:]
 			u.HasPassword = true
 		} else {
 			u.User = userinfo
 		}
 		if decoded, err := url.PathUnescape(u.User); err == nil {
 			u.User = decoded
+		}
+		if decoded, err := url.PathUnescape(u.Password); err == nil {
+			u.Password = decoded
 		}
 	}
 	if u.Host == "" {

@@ -128,10 +128,11 @@ func (m Model) importProfilesFile(path string) Model {
 			continue
 		}
 		m.opts.State.Upsert(config.Profile{
-			ID:     newProfileID(),
-			Label:  config.MongoLabel(uri),
-			Engine: "mongo",
-			URI:    uri,
+			ID:         newProfileID(),
+			Label:      config.MongoLabel(uri),
+			Engine:     "mongo",
+			URI:        uri,
+			SourceFile: path,
 		})
 		added++
 	}

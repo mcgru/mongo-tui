@@ -117,3 +117,41 @@ func TestHasMongoURI(t *testing.T) {
 		t.Fatal("HasMongoURI() = true for a different URI")
 	}
 }
+
+func TestPasswordFromFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".mongorc.js")
+	content := []byte(
+		"connect(\"mongodb://uuu:pppp@mongod1:27021,mongod2:27022,mongod3:27023/stage?authSource=admin&replicaset=dbrs\")\n" +
+			"mongosh \"mongodb+srv://bob@cluster.example/analytics\"\n",
+	)
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	const raw = `mongodb://uuu:pppp@mongod1:27021,mongod2:27022,mongod3:27023/stage?authSource=admin&replicaset=dbrs`
+	profileURI, ok := NormalizeMongoURI(raw)
+	if !ok {
+		t.Fatalf("NormalizeMongoURI() rejected %q", raw)
+	}
+
+	got, ok := PasswordFromFile(path, profileURI)
+	if !ok || got != "pppp" {
+		t.Fatalf("PasswordFromFile() = %q, %v; want pppp, true", got, ok)
+	}
+
+	// A URI in the file without a password is not a usable credential.
+	if _, ok := PasswordFromFile(path, "mongodb+srv://bob@cluster.example/analytics"); ok {
+		t.Fatal("PasswordFromFile() found a password for a password-less URI")
+	}
+
+	// A URI that is not in the file at all.
+	if _, ok := PasswordFromFile(path, "mongodb://other.example/db"); ok {
+		t.Fatal("PasswordFromFile() found a password for an absent URI")
+	}
+
+	// A missing file is "not found", not an error.
+	if _, ok := PasswordFromFile(filepath.Join(dir, "missing"), profileURI); ok {
+		t.Fatal("PasswordFromFile() found a password in a missing file")
+	}
+}

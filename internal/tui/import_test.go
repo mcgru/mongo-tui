@@ -46,12 +46,16 @@ func TestImportProfilesFromMongoFile(t *testing.T) {
 	if len(m.opts.State.Profiles) != 2 {
 		t.Fatalf("profiles = %+v, want 2 imported", m.opts.State.Profiles)
 	}
+	wantSource := filepath.Join(home, ".mongorc.js")
 	for _, profile := range m.opts.State.Profiles {
 		if profile.Engine != "mongo" || profile.URI == "" {
 			t.Fatalf("profile = %+v", profile)
 		}
 		if strings.Contains(profile.URI, "pppp") || strings.Contains(profile.URI, "secret") {
 			t.Fatalf("password leaked into profile URI: %q", profile.URI)
+		}
+		if profile.SourceFile != wantSource {
+			t.Fatalf("profile source = %q, want %q", profile.SourceFile, wantSource)
 		}
 	}
 
@@ -61,6 +65,14 @@ func TestImportProfilesFromMongoFile(t *testing.T) {
 	}
 	if len(stored.Profiles) != 2 {
 		t.Fatalf("stored profiles = %+v, status=%q path=%q", stored.Profiles, m.status, opts.Paths.StateFile)
+	}
+
+	raw, err := os.ReadFile(opts.Paths.StateFile)
+	if err != nil {
+		t.Fatalf("ReadFile(state) error = %v", err)
+	}
+	if strings.Contains(string(raw), "pppp") {
+		t.Fatal("password leaked into the state file")
 	}
 }
 
@@ -92,5 +104,56 @@ func TestImportSkipsDuplicates(t *testing.T) {
 	m, _ = press(t, m, tea.KeyEnter)
 	if len(m.opts.State.Profiles) != 1 {
 		t.Fatalf("profiles after duplicate import = %+v, want 1", m.opts.State.Profiles)
+	}
+}
+
+func TestConnectPasswordFromSourceFile(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, ".mongorc.js")
+	const raw = `mongodb://ann:secret@db.example:27017/app?replicaSet=rs0`
+	if err := os.WriteFile(source, []byte(`connect("`+raw+`")`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	uri, ok := config.NormalizeMongoURI(raw)
+	if !ok {
+		t.Fatalf("NormalizeMongoURI() rejected %q", raw)
+	}
+
+	opts := testOptions()
+	opts.State.Upsert(config.Profile{
+		ID:         "with-file",
+		Label:      config.MongoLabel(uri),
+		Engine:     "mongo",
+		URI:        uri,
+		SourceFile: source,
+	})
+	opts.State.Upsert(config.Profile{
+		ID:     "no-file",
+		Label:  config.MongoLabel(uri),
+		Engine: "mongo",
+		URI:    uri,
+	})
+	opts.State.Upsert(config.Profile{
+		ID:         "missing-file",
+		Label:      config.MongoLabel(uri),
+		Engine:     "mongo",
+		URI:        uri,
+		SourceFile: filepath.Join(dir, "gone"),
+	})
+	m := New(opts)
+
+	for _, tc := range []struct {
+		id   string
+		want string
+	}{
+		{"with-file", "secret"},
+		{"no-file", ""},
+		{"missing-file", ""},
+		{"unknown", ""},
+	} {
+		m.profileID = tc.id
+		if got := m.connectPassword(); got != tc.want {
+			t.Fatalf("connectPassword(%q) = %q, want %q", tc.id, got, tc.want)
+		}
 	}
 }

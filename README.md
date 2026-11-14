@@ -55,7 +55,11 @@ state file or the command line. A MongoDB URI cannot be combined with
 
 On the picker, `i` imports MongoDB URIs from a `~/.mongo*` file such as
 `.mongorc.js` or a mongosh history. The file picker lists the matching regular
-files; passwords are stripped and duplicate URIs are skipped.
+files; passwords are stripped from the saved URI, duplicate URIs are skipped,
+and the source file path is remembered on the profile. When such a profile is
+opened, the password is re-read from that file `.pgpass`-style instead of
+being asked for again; if the file is gone or no longer matches, the TUI falls
+back to the password prompt.
 
 ## Editor
 
@@ -197,6 +201,7 @@ internal/cli/       command line
 internal/config/    TOML config, XDG paths, profiles, legacy migration
 internal/engine/    engine-neutral session/catalog types
 internal/mongo/     MongoDB driver client, query/MQL parser, catalog, TUI adapter
+internal/mongouri/  MongoDB connection-string parser (multi-host, password stripping)
 internal/tui/       bubbletea models: layout, tree, editor, grid, completion
 deploy/mongo/       docker-compose MongoDB 8.0 replica set
 docs/adr/           architecture decisions
