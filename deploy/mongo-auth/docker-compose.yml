@@ -1,0 +1,29 @@
+name: mongo-tui-auth
+
+services:
+  mongo:
+    image: mongo:8.0
+    command:
+      - bash
+      - -c
+      - |
+        set -e
+        if [ ! -f /data/db/keyfile ]; then
+          openssl rand -base64 756 > /data/db/keyfile
+          chmod 400 /data/db/keyfile
+        fi
+        exec mongod --port 57018 --bind_ip_all \
+          --auth --keyFile /data/db/keyfile \
+          --tlsMode requireTLS \
+          --tlsCertificateKeyFile /certs/server.pem \
+          --tlsCAFile /certs/ca.pem \
+          --tlsAllowConnectionsWithoutCertificates
+
+    ports:
+      - "127.0.0.1:57018:57018"
+    volumes:
+      - mongo-data:/data/db
+      - ./certs:/certs:ro
+
+volumes:
+  mongo-data:

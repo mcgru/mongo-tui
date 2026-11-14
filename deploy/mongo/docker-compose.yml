@@ -1,0 +1,13 @@
+name: mongo-tui-test
+
+services:
+  mongo:
+    image: mongo:8.0
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all", "--port", "57017"]
+    ports:
+      - "127.0.0.1:57017:57017"
+    volumes:
+      - mongo-data:/data/db
+
+volumes:
+  mongo-data:

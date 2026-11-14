@@ -1,0 +1,15 @@
+# Reference copy of the PostgreSQL sources (~590 MB). Never commit.
+/pg-src/
+
+# Build artifacts
+/bin/
+/dist/
+*.exe
+
+# Local runtime state, logs and agent scratch
+/.qwen/
+*.log
+__pycache__/
+*.pyc
+
+deploy/mongo-auth/certs/
