@@ -151,7 +151,8 @@ the state file.
 └──────────────────────┴───────────────────────────────────┘
 ```
 
-- `Ctrl+J` run, `Ctrl+R` history, `Ctrl+Space` completion.
+- `Ctrl+J` runs the request under the cursor, or the selection (`Ctrl+A` runs
+  the whole buffer); `Ctrl+R` history, `Ctrl+Space` completion.
 - `Ctrl+F1` help; F1 is also bound, but Konsole may keep it.
 - `Tab`/`Shift+Tab` focus; `]`/`[` switch RESULT/OBJECT/MESSAGES.
 - `Ctrl+←/→` resize the tree; `Ctrl+↑/↓` move the result/editor divider.

@@ -995,6 +995,12 @@ func (m Model) insertStatement(statement string) Model {
 // insertStatementAfter appends a skeleton and puts the cursor right after the
 // first occurrence of needle, so the suggested name can be typed over.
 func (m Model) insertStatementAfter(statement, needle string) Model {
+	// Terminate the statement so several appended templates stay separate
+	// requests: the splitter (and the cursor-line run) cut on top-level ";",
+	// otherwise two adjacent lines would glue into one malformed request.
+	if trimmed := strings.TrimRight(statement, " \t\r\n"); trimmed != "" && !strings.HasSuffix(trimmed, ";") {
+		statement = trimmed + ";"
+	}
 	// A template is new work, so it goes to the end of the buffer on its own
 	// line instead of landing in the middle of whatever the cursor was on.
 	start := m.editor.AppendStatement(statement)
@@ -1740,19 +1746,20 @@ func (m Model) startRun() (tea.Model, tea.Cmd) {
 	return m, m.runCmd(statements)
 }
 
-// requestUnderCursor returns the requests to run: the whole buffer or the
-// selection, split on top-level semicolons and validated by the adapter.
+// requestUnderCursor returns the requests to run: the selection when there is
+// one, otherwise the single statement under the cursor — never the whole buffer,
+// so already-executed (✓) statements are not re-run by accident. Statements are
+// split on top-level separators and validated by the adapter.
 func (m Model) requestUnderCursor() ([]string, error) {
-	if !m.isMongo() {
-		return m.requestUnderCursor()
-	}
-	text := m.editor.Value()
+	text := ""
 	if m.editor.HasSelection() {
 		text = m.editor.SelectedText()
+	} else if st, ok := m.editor.StatementAtLine(m.editor.Line()); ok {
+		text = st.Text
 	}
 	text = strings.TrimSpace(text)
 	if text == "" {
-		return nil, errors.New("the editor is empty")
+		return nil, errors.New("no request under the cursor")
 	}
 	requests, err := mongoquery.SplitRequests(text)
 	if err != nil {

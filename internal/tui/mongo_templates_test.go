@@ -85,6 +85,38 @@ func TestMongoTemplatesAndInsertName(t *testing.T) {
 	}
 }
 
+func TestPlusTwiceYieldsSeparateStatements(t *testing.T) {
+	fake := &fakeSession{info: engine.Info{ServerVersion: "8.0.38", Database: "app"}}
+	m := mongoModel(t, fake)
+	folder := &treeNode{kind: nodeFolder, title: "Collections", schema: "app"}
+
+	// Two new-document templates added one after the other, as happens when a
+	// collection is created and then another is added, must be two separate
+	// requests — not one glued line that fails to parse.
+	m = m.insertDdl(folder, ddlCreate)
+	m = m.insertDdl(folder, ddlCreate)
+
+	parts := splitEditorStatements(m.editor.Value())
+	if len(parts) != 2 {
+		t.Fatalf("buffer split into %d statements, want 2:\n%q", len(parts), m.editor.Value())
+	}
+	for _, p := range parts {
+		if strings.Count(p.Text, "db.") != 1 {
+			t.Fatalf("statement %q is two glued requests", p.Text)
+		}
+	}
+
+	// Ctrl+J runs only the statement under the cursor (the last one), validly.
+	m.editor.MoveToStatement(parts[1])
+	under, err := m.requestUnderCursor()
+	if err != nil {
+		t.Fatalf("requestUnderCursor error = %v", err)
+	}
+	if len(under) != 1 || under[0] != parts[1].Text {
+		t.Fatalf("requestUnderCursor = %#v, want just %q", under, parts[1].Text)
+	}
+}
+
 func TestMongoRunValidatesRequest(t *testing.T) {
 	fake := &fakeSession{info: engine.Info{ServerVersion: "8.0.38", Database: "app"}}
 	m := mongoModel(t, fake)
@@ -146,6 +178,9 @@ func TestMongoRunMultipleRequests(t *testing.T) {
 	m := mongoModel(t, fake)
 	m.editor.SetValue(`db.items.insertOne({_id: 1, name: "Ann"}); db.items.find({})`)
 	m.focus = focusEditor
+	// Ctrl+J runs the statement under the cursor, or the selection; to run
+	// several at once the whole buffer is selected.
+	m.editor.SelectAll()
 
 	m, cmd := press(t, m, tea.KeyCtrlJ)
 	if cmd == nil {
