@@ -42,6 +42,7 @@ const (
 	screenPicker screen = iota
 	screenImport
 	screenImportURIs
+	screenImportRoles
 	screenInput
 	screenPassword
 	screenConnecting
@@ -137,11 +138,16 @@ type Model struct {
 	// importFiles/importCursor drive the ~/.mongo* import picker. importUser
 	// marks it as importing a user (from the tree) instead of profiles (from the
 	// picker); importURIs is the second level: the URIs found in the chosen file
-	// when there is more than one to pick from.
-	importFiles  []string
-	importURIs   []string
-	importCursor int
-	importUser   bool
+	// when there is more than one to pick from. importURI/importRoleSel are the
+	// third level: the chosen URI awaiting a role selection (Space toggles,
+	// Enter applies).
+	importFiles      []string
+	importURIs       []string
+	importURI        string
+	importRoleSel    []bool
+	importCursor     int
+	importRoleCursor int
+	importUser       bool
 
 	mongoURI  string
 	profileID string
@@ -586,6 +592,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case screenImportURIs:
 		return m.handleImportURIsKey(key)
+
+	case screenImportRoles:
+		return m.handleImportRolesKey(key)
 
 	case screenInput:
 		switch key {
@@ -1084,7 +1093,7 @@ func (m Model) switchCmd(database string) tea.Cmd {
 }
 
 // upsertUserCmd runs UpsertUser on the live session.
-func (m Model) upsertUserCmd(username, password, database, authSource string) tea.Cmd {
+func (m Model) upsertUserCmd(username, password, database, authSource string, roles []string) tea.Cmd {
 	sess := m.sess
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
@@ -1093,7 +1102,7 @@ func (m Model) upsertUserCmd(username, password, database, authSource string) te
 		if !ok {
 			return userUpsertMsg{username: username, err: errors.New("user management is not available")}
 		}
-		return userUpsertMsg{username: username, err: cat.UpsertUser(ctx, username, password, database, authSource)}
+		return userUpsertMsg{username: username, err: cat.UpsertUser(ctx, username, password, database, authSource, roles)}
 	}
 }
 

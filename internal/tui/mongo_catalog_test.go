@@ -21,6 +21,7 @@ type fakeMongoCatalog struct {
 	card        engine.CollectionCard
 	upsertUser  struct {
 		username, password, database, authSource string
+		roles                                    []string
 		err                                      error
 	}
 }
@@ -52,11 +53,12 @@ func (f *fakeMongoCatalog) CollectionCard(context.Context, string, string) (engi
 	return f.card, nil
 }
 
-func (f *fakeMongoCatalog) UpsertUser(_ context.Context, username, password, database, authSource string) error {
+func (f *fakeMongoCatalog) UpsertUser(_ context.Context, username, password, database, authSource string, roles []string) error {
 	f.upsertUser.username = username
 	f.upsertUser.password = password
 	f.upsertUser.database = database
 	f.upsertUser.authSource = authSource
+	f.upsertUser.roles = roles
 	return f.upsertUser.err
 }
 

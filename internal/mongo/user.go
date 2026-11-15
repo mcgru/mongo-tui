@@ -8,18 +8,24 @@ import (
 	mg "go.mongodb.org/mongo-driver/v2/mongo"
 )
 
-// UpsertUser creates a MongoDB user with the readWrite role on database, in the
-// authSource database, or updates the password and roles when the user already
-// exists.
-func (s *Session) UpsertUser(ctx context.Context, username, password, database, authSource string) error {
-	roles := bson.A{bson.D{
-		{Key: "role", Value: "readWrite"},
-		{Key: "db", Value: database},
-	}}
+// UpsertUser creates a MongoDB user in the authSource database with every role
+// in roles granted on database, or updates the password and roles when the user
+// already exists. An empty roles list defaults to readWrite on database.
+func (s *Session) UpsertUser(ctx context.Context, username, password, database, authSource string, roles []string) error {
+	if len(roles) == 0 {
+		roles = []string{"readWrite"}
+	}
+	bsonRoles := make(bson.A, 0, len(roles))
+	for _, role := range roles {
+		bsonRoles = append(bsonRoles, bson.D{
+			{Key: "role", Value: role},
+			{Key: "db", Value: database},
+		})
+	}
 	create := bson.D{
 		{Key: "createUser", Value: username},
 		{Key: "pwd", Value: password},
-		{Key: "roles", Value: roles},
+		{Key: "roles", Value: bsonRoles},
 	}
 	err := s.client.Database(authSource).RunCommand(ctx, create).Err()
 	if err == nil {
@@ -31,7 +37,7 @@ func (s *Session) UpsertUser(ctx context.Context, username, password, database, 
 	update := bson.D{
 		{Key: "updateUser", Value: username},
 		{Key: "pwd", Value: password},
-		{Key: "roles", Value: roles},
+		{Key: "roles", Value: bsonRoles},
 	}
 	return s.client.Database(authSource).RunCommand(ctx, update).Err()
 }

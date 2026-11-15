@@ -55,6 +55,8 @@ func (m Model) View() string {
 		return m.viewImport()
 	case screenImportURIs:
 		return m.viewImportURIs()
+	case screenImportRoles:
+		return m.viewImportRoles()
 	case screenInput:
 		return m.viewPrompt(
 			"New connection",
@@ -554,6 +556,8 @@ func (m Model) footerKeys() string {
 		return "↑↓ choose  Enter import  Esc back  " + key(config.ActionQuit) + " quit"
 	case screenImportURIs:
 		return "↑↓ choose  Enter import  Esc back  " + key(config.ActionQuit) + " quit"
+	case screenImportRoles:
+		return "↑↓ move  Space toggle  Enter apply  Esc back  " + key(config.ActionQuit) + " quit"
 
 	case screenMain:
 		help := "  " + key(config.ActionHelp) + " help"
