@@ -1412,10 +1412,16 @@ func (m Model) handleTreeKey(key string) (tea.Model, tea.Cmd) {
 		return m, nil
 	case m.keys.Is(config.ActionCreateTemplate, key):
 		node := m.tree.current()
-		// "+" on the Databases folder stages a new database; on any other node
-		// it stays the create-collection/create-index template.
-		if node != nil && node.kind == nodeFolder && node.title == "Databases" {
-			return m.openNewDatabase()
+		// "+" on the Databases folder stages a new database; on the Users
+		// folder it imports a user, the same as "i"; anywhere else it is the
+		// create-collection/create-index template.
+		if node != nil && node.kind == nodeFolder {
+			switch node.title {
+			case "Databases":
+				return m.openNewDatabase()
+			case "Users":
+				return m.openImportFiles(true)
+			}
 		}
 		if node != nil {
 			return m.insertDdl(node, ddlCreate), nil

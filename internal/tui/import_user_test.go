@@ -37,6 +37,25 @@ func TestTreeImportKeyOnUsersOpensUserImport(t *testing.T) {
 	}
 }
 
+func TestTreePlusOnUsersOpensUserImport(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.WriteFile(filepath.Join(home, ".mongorc.js"),
+		[]byte(`connect("mongodb://ann:secret@db.example/app")`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	m, _ := newImportTestModel(t)
+	m.focus = focusTree
+	m.tree.cursor = 2 // Users folder
+
+	updated, _ := m.handleTreeKey("+")
+	got := updated.(Model)
+	if got.scr != screenImport || !got.importUser {
+		t.Fatalf("scr=%v importUser=%v, want user import via +", got.scr, got.importUser)
+	}
+}
+
 func TestTreeImportKeyOutsideUsersIsNoop(t *testing.T) {
 	m, _ := newImportTestModel(t)
 	m.focus = focusTree

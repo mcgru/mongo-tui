@@ -51,8 +51,8 @@ func mongoDatabasesLoader(cat engine.Catalog) func(context.Context) ([]*treeNode
 func mongoDatabaseLoader(cat engine.Catalog, database string) func(context.Context) ([]*treeNode, error) {
 	return func(context.Context) ([]*treeNode, error) {
 		return []*treeNode{
-			{kind: nodeFolder, title: "Collections", load: mongoCollectionsLoader(cat, database)},
-			{kind: nodeFolder, title: "Views", load: mongoViewsLoader(cat, database)},
+			{kind: nodeFolder, title: "Collections", schema: database, load: mongoCollectionsLoader(cat, database)},
+			{kind: nodeFolder, title: "Views", schema: database, load: mongoViewsLoader(cat, database)},
 		}, nil
 	}
 }

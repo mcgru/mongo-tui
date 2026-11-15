@@ -74,6 +74,19 @@ func (m Model) insertMongoTemplate(node *treeNode, op ddlOperation) Model {
 	switch op {
 	case ddlCreate:
 		switch node.kind {
+		case nodeFolder:
+			// "+" on a database's Collections folder adds a collection there,
+			// which is the same new-document template as on the database node.
+			if node.title != "Collections" {
+				break
+			}
+			if !strings.EqualFold(node.schema, m.currentDatabase()) {
+				m.status = "switch to " + node.schema + " first"
+				return m
+			}
+			return m.insertStatementAfter(fmt.Sprintf(
+				`db.new_collection.insertOne({createdAt: ISODate(%q)})`,
+				time.Now().UTC().Format(time.RFC3339)), "new_collection")
 		case nodeDatabase:
 			if !strings.EqualFold(node.title, m.currentDatabase()) {
 				m.status = "switch to " + node.title + " first"

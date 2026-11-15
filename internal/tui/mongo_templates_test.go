@@ -67,6 +67,22 @@ func TestMongoTemplatesAndInsertName(t *testing.T) {
 	if !strings.Contains(m.editor.Value(), `"items"`) {
 		t.Fatalf("inserted name = %q", m.editor.Value())
 	}
+
+	// "+" on the current database's Collections folder adds a collection there.
+	collectionsFolder := &treeNode{kind: nodeFolder, title: "Collections", schema: "app"}
+	m.editor.SetValue("")
+	m = m.insertDdl(collectionsFolder, ddlCreate)
+	if !strings.Contains(m.editor.Value(), `db.new_collection.insertOne({createdAt: ISODate("`) {
+		t.Fatalf("collections folder template = %q", m.editor.Value())
+	}
+
+	// "+" on another database's Collections folder asks to switch first.
+	otherFolder := &treeNode{kind: nodeFolder, title: "Collections", schema: "other"}
+	m.editor.SetValue("")
+	m = m.insertDdl(otherFolder, ddlCreate)
+	if !strings.Contains(m.status, "switch to other") {
+		t.Fatalf("status = %q, want a switch hint", m.status)
+	}
 }
 
 func TestMongoRunValidatesRequest(t *testing.T) {

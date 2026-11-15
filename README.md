@@ -113,10 +113,12 @@ not a schema.
 
 `Ctrl+Space` completes databases, collections, methods, fields, query/update
 operators, aggregation stages and JSON values. `/` inserts a find, `p` runs a
-limited find, `+` on a database inserts a ready new-document `insertOne` (which
-creates the collection on the first write, `createdAt` filled, cursor on the
-name), `+` on a collection inserts `createIndex`, `-` inserts drop or dropIndex,
-`=` inserts collMod; `.` inserts the selected collection name as a JSON string.
+limited find, `+` on a database or its **Collections** folder inserts a ready
+new-document `insertOne` (which creates the collection on the first write,
+`createdAt` filled, cursor on the name), `+` on a collection inserts
+`createIndex`, `+` on the **Users** folder imports a user (the same as `i`), `-`
+inserts drop or dropIndex, `=` inserts collMod; `.` inserts the selected
+collection name as a JSON string.
 
 `Enter` (or `→`) on a **Users** row opens the user in the OBJECT pane: their home
 database and authentication, then a role checklist. `↑↓` move, `Space` toggles a
