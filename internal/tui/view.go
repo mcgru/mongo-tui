@@ -381,8 +381,12 @@ func (m Model) resultLines(width, height int) []string {
 	return m.grid.lines(width, height)
 }
 
-// cardLines renders the MongoDB collection card or the selected document.
+// cardLines renders the MongoDB collection card, the open user card, or the
+// selected document.
 func (m Model) cardLines(width, height int) []string {
+	if m.mongoUser != nil {
+		return m.mongoUserLines(width, height)
+	}
 	if m.mongoCard != nil {
 		return m.mongoCardLines(width, height)
 	}
@@ -481,6 +485,61 @@ func (m Model) mongoCardLines(width, height int) []string {
 	}
 
 	return window(lines, m.cardOff, height, width)
+}
+
+// mongoUserLines renders the user card: who they are, then an editable role
+// checklist (real roles first, then addable builtin roles on the home database).
+func (m Model) mongoUserLines(width, height int) []string {
+	user := m.mongoUser
+	if user == nil {
+		return []string{dimStyle.Render("select a user in the object tree and press Enter")}
+	}
+
+	headline := user.Username
+	if user.Database != "" {
+		headline += "  ·  db: " + user.Database
+	}
+	lines := []string{titleStyle.Render("USER " + headline), ""}
+
+	if !user.Exists {
+		return append(lines, errorStyle.Render("user not found in "+user.Database))
+	}
+
+	lines = append(lines, dimStyle.Render("ROLES"))
+	if len(m.userRows) == 0 {
+		lines = append(lines, "  "+dimStyle.Render("no roles"))
+	}
+	roleStart := len(lines)
+	for i, row := range m.userRows {
+		check := "[ ]"
+		if row.checked {
+			check = "[x]"
+		}
+		cursor := "  "
+		if i == m.userRoleCursor {
+			cursor = "› "
+		}
+		line := cursor + check + " " + row.ref.DB + ":" + row.ref.Role
+		if !row.current {
+			line += dimStyle.Render("   (add)")
+		} else if i == m.userRoleCursor {
+			line += dimStyle.Render("   (space: remove)")
+		}
+		lines = append(lines, line)
+	}
+
+	lines = append(lines, "", dimStyle.Render("↑↓ role  Space toggle  Enter save  Esc close"))
+	if m.userDirty {
+		lines[len(lines)-1] = warnStyle.Render("unsaved role changes — ") + lines[len(lines)-1]
+	}
+
+	// Keep the highlighted role on screen.
+	off := 0
+	visible := maxInt(1, height)
+	if roleStart+m.userRoleCursor >= visible {
+		off = roleStart + m.userRoleCursor - visible + 1
+	}
+	return window(lines, off, height, width)
 }
 
 func prettyJSONLines(text string) []string {

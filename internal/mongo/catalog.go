@@ -130,7 +130,7 @@ func (s *Session) Users(ctx context.Context) ([]engine.Item, error) {
 		if roles := roleSummary(user.Roles); roles != "" {
 			detail += " · " + roles
 		}
-		items = append(items, engine.Item{Name: user.User, Detail: detail})
+		items = append(items, engine.Item{Name: user.User, Detail: detail, Database: user.DB})
 	}
 	sortItems(items)
 	return items, nil

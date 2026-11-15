@@ -113,9 +113,16 @@ not a schema.
 
 `Ctrl+Space` completes databases, collections, methods, fields, query/update
 operators, aggregation stages and JSON values. `/` inserts a find, `p` runs a
-limited find, `+` inserts createIndex/createCollection, `-` inserts drop or
-dropIndex, `=` inserts collMod; `.` inserts the selected collection name as a
-JSON string.
+limited find, `+` on a database inserts a ready new-document `insertOne` (which
+creates the collection on the first write, `createdAt` filled, cursor on the
+name), `+` on a collection inserts `createIndex`, `-` inserts drop or dropIndex,
+`=` inserts collMod; `.` inserts the selected collection name as a JSON string.
+
+`Enter` (or `→`) on a **Users** row opens the user in the OBJECT pane: their home
+database and authentication, then a role checklist. `↑↓` move, `Space` toggles a
+grant (existing roles can be revoked, unused built-in roles added on the user's
+home database), `Enter` saves with `updateUser` — the password is untouched — and
+`Esc` closes without saving.
 
 `i` on the **Users** folder imports a MongoDB user from a `~/.mongo*` file: the
 username, password, database and `authSource` are read from the chosen URI. A

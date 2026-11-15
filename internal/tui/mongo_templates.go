@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 )
 
@@ -78,7 +79,12 @@ func (m Model) insertMongoTemplate(node *treeNode, op ddlOperation) Model {
 				m.status = "switch to " + node.title + " first"
 				return m
 			}
-			return m.insertStatementAfter(`db.createCollection("new_collection", {})`, "new_collection")
+			// A document creates its collection on the first insert, so this is
+			// how a new collection is added. createdAt is the current UTC time;
+			// _id is left to MongoDB. The cursor lands after the collection name.
+			return m.insertStatementAfter(fmt.Sprintf(
+				`db.new_collection.insertOne({createdAt: ISODate(%q)})`,
+				time.Now().UTC().Format(time.RFC3339)), "new_collection")
 		case nodeCollection:
 			if !m.mongoNodeInCurrentDB(node) {
 				m.status = "switch to " + node.schema + " first"

@@ -121,7 +121,14 @@ func mongoUsersLoader(cat engine.Catalog) func(context.Context) ([]*treeNode, er
 		if err != nil {
 			return nil, err
 		}
-		return itemNodes(items, nodeUser), nil
+		nodes := itemNodes(items, nodeUser)
+		// A user card is opened by database + username, so the node must carry
+		// the user's home database.
+		for i, node := range nodes {
+			node.schema = items[i].Database
+			node.name = items[i].Name
+		}
+		return nodes, nil
 	}
 }
 

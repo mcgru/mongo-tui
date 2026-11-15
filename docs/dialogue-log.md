@@ -1162,6 +1162,44 @@ Enter), он зовёт `Session.SwitchDatabase` (чисто клиентска�
   `TestLiveDatabaseMaterializesOnWrite` (пустая база не в списке → после InsertOne
   появляется и помечена current).
 
+### Пользователь
+
+> 1. при добавлении (+) коллекции - вставлять шаблончик на новый документ в эдиторе и курсор сразу после имени, а в шаблончике чтобы id документа, createdAt правильный. 2. В списке Users - при ентер на пользователе (или стрелка вправо) - предложил - или показывать модальное окно с редактированиием пользователя, или в object-окошке показывать свойства "объекта" пользователь, и там в числе свойств на первых местах (не низко чтобы) - список ролей с возможностью сменить (пробелом?).
+
+Развилки: #1 — заменить createCollection на insertOne-документ, `_id` не
+указывать (назначит сервер); #2 — показывать в OBJECT-панели, роли — реальные из
+usersInfo.
+
+### Ответ
+
+Две доработки.
+
+**#1. `+` на базе — новый документ вместо createCollection.** MQL-парсер требует
+валидный `ObjectId("<hex>")`/`ISODate("<RFC3339>")`, поэтому `_id` в шаблон не
+пишется (его назначает сервер), а `createdAt` подставляется текущим UTC
+(`time.Now().UTC().Format(time.RFC3339)`). Шаблон
+`db.new_collection.insertOne({createdAt: ISODate("...")})`, курсор после имени;
+insert создаёт коллекцию первой записью. `+` на коллекции — по-прежнему
+`createIndex`.
+
+**#2. Пользователь во вкладке OBJECT с редактированием ролей.**
+- `engine`: `Item.Database`, типы `RoleRef{Role,DB}` и `UserCard{Username,Database,
+  Mechanisms,Roles,Exists}`; в `Catalog` — `UserCard(ctx,db,user)` и
+  `UpdateUserRoles(ctx,db,user,roles)`.
+- `internal/mongo/user.go`: `UserCard` читает usersInfo одной учётки (роли и
+  механизмы), `UpdateUserRoles` — `updateUser` с `roles` без `pwd`.
+- Узлы Users несут `schema`(домашняя база)+`name`; `Enter`/`→` на пользователе
+  открывает карточку (`userCardCmd`/`userCardMsg`).
+- Чеклист `userRows` = реальные роли (отмечены) + неиспользованные builtin-роли
+  базы (для добавления). `handleUserCardKey`: `↑↓` курсор, `Space` переключение,
+  `Enter` сохранение (`saveUserRolesCmd` → `updateUser` → перезагрузка карточки),
+  `Esc` закрыть. Перехват в `handleTreeKey`, пока `mongoUser != nil`.
+- `mongoUserLines` рисует USER/ROLES; карточка пользователя и коллекции
+  взаимоисключающи; сброс при switch/close/query.
+- README EN/RU и PRD (§2, §4.2, §4.5) обновлены. Тесты: unit на поток
+  open→revoke/add→save и закрытие, живой `TestLiveUserCardAndRoles` (чтение
+  структурированных ролей, замена grant'ов без пароля, отзыв всех).
+
 
 
 

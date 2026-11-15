@@ -104,3 +104,64 @@ func mustDatabases(t *testing.T, s *Session) []engine.Item {
 	}
 	return dbs
 }
+
+// TestLiveUserCardAndRoles reads a user's structured grants and rewrites them
+// without touching the password, backing the OBJECT-pane role editor.
+func TestLiveUserCardAndRoles(t *testing.T) {
+	ctx := context.Background()
+	s := liveSession(t, ConnectOptions{})
+	targetDB := newTestDB(t, s)
+	const authSource = "admin"
+
+	username := "tui_roles_" + time.Now().Format("150405")
+	if err := s.UpsertUser(ctx, username, "p4ssword", targetDB, authSource, []string{"read", "readWrite"}); err != nil {
+		t.Fatalf("UpsertUser(create) error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = s.client.Database(authSource).RunCommand(ctx, d(e("dropUser", username))).Err()
+	})
+
+	card, err := s.UserCard(ctx, authSource, username)
+	if err != nil {
+		t.Fatalf("UserCard() error = %v", err)
+	}
+	if !card.Exists || card.Username != username || card.Database != authSource {
+		t.Fatalf("card = %+v, want %q in admin", card, username)
+	}
+	if !hasRole(card.Roles, "read", targetDB) || !hasRole(card.Roles, "readWrite", targetDB) {
+		t.Fatalf("card roles = %+v, want read and readWrite on %s", card.Roles, targetDB)
+	}
+
+	// Replace the grants with dbOwner; the password must be untouched so a
+	// later update succeeds on the same credentials.
+	if err := s.UpdateUserRoles(ctx, authSource, username, []engine.RoleRef{{Role: "dbOwner", DB: targetDB}}); err != nil {
+		t.Fatalf("UpdateUserRoles() error = %v", err)
+	}
+	card, err = s.UserCard(ctx, authSource, username)
+	if err != nil {
+		t.Fatalf("UserCard() after update error = %v", err)
+	}
+	if len(card.Roles) != 1 || card.Roles[0].Role != "dbOwner" || card.Roles[0].DB != targetDB {
+		t.Fatalf("card roles = %+v, want only dbOwner on %s", card.Roles, targetDB)
+	}
+
+	// Revoking every role is valid.
+	if err := s.UpdateUserRoles(ctx, authSource, username, nil); err != nil {
+		t.Fatalf("UpdateUserRoles(empty) error = %v", err)
+	}
+	if card, err = s.UserCard(ctx, authSource, username); err != nil {
+		t.Fatalf("UserCard() after revoke error = %v", err)
+	}
+	if len(card.Roles) != 0 {
+		t.Fatalf("card roles = %+v, want none after revoke", card.Roles)
+	}
+}
+
+func hasRole(roles []engine.RoleRef, role, db string) bool {
+	for _, r := range roles {
+		if r.Role == role && r.DB == db {
+			return true
+		}
+	}
+	return false
+}

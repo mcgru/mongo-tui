@@ -47,7 +47,7 @@ func TestMongoTemplatesAndInsertName(t *testing.T) {
 	database := &treeNode{kind: nodeDatabase, title: "app"}
 	m.editor.SetValue("")
 	m = m.insertDdl(database, ddlCreate)
-	if !strings.Contains(m.editor.Value(), `db.createCollection("new_collection", {})`) {
+	if !strings.Contains(m.editor.Value(), `db.new_collection.insertOne({createdAt: ISODate("`) {
 		t.Fatalf("create collection template = %q", m.editor.Value())
 	}
 	wantCursor := strings.Index(m.editor.Value(), "new_collection") + len("new_collection")

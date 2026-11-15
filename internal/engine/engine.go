@@ -57,6 +57,25 @@ type Item struct {
 	Detail string
 	// Current marks the database the session is connected to.
 	Current bool
+	// Database is the owning database, set where it matters (users, roles) so
+	// the tree can open that object without re-deriving it.
+	Database string
+}
+
+// RoleRef is one {role, db} grant, exactly as MongoDB stores it on a user.
+type RoleRef struct {
+	Role string
+	DB   string
+}
+
+// UserCard is the object pane view of one MongoDB user: where they live, how
+// they authenticate, and their role grants. Roles are read from usersInfo.
+type UserCard struct {
+	Username   string
+	Database   string // the database the user is defined in (auth source)
+	Mechanisms []string
+	Roles      []RoleRef
+	Exists     bool
 }
 
 // Session is one live connection to MongoDB, backed by one driver client.
@@ -120,6 +139,11 @@ type Catalog interface {
 	Indexes(ctx context.Context, database, collection string) ([]Item, error)
 	Users(ctx context.Context) ([]Item, error)
 	Roles(ctx context.Context) ([]Item, error)
+	// UserCard reads one user's definition (auth database, mechanisms, roles).
+	UserCard(ctx context.Context, database, username string) (UserCard, error)
+	// UpdateUserRoles replaces a user's role grants without touching the
+	// password. database is the user's auth database.
+	UpdateUserRoles(ctx context.Context, database, username string, roles []RoleRef) error
 	// Fields returns field names for completion: the document sample plus index
 	// keys and JSON Schema properties observed in the collection card.
 	Fields(ctx context.Context, database, collection string) ([]FieldInfo, error)

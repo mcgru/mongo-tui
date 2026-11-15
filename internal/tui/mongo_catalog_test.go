@@ -19,7 +19,13 @@ type fakeMongoCatalog struct {
 	users       []engine.Item
 	roles       []engine.Item
 	card        engine.CollectionCard
-	upsertUser  struct {
+	userCard    engine.UserCard
+	updateRoles struct {
+		database, username string
+		roles              []engine.RoleRef
+		err                error
+	}
+	upsertUser struct {
 		username, password, database, authSource string
 		roles                                    []string
 		err                                      error
@@ -60,6 +66,33 @@ func (f *fakeMongoCatalog) UpsertUser(_ context.Context, username, password, dat
 	f.upsertUser.authSource = authSource
 	f.upsertUser.roles = roles
 	return f.upsertUser.err
+}
+
+func (f *fakeMongoCatalog) UserCard(_ context.Context, database, username string) (engine.UserCard, error) {
+	card := f.userCard
+	if card.Username == "" {
+		card.Username = username
+	}
+	if card.Database == "" {
+		card.Database = database
+	}
+	if !card.Exists {
+		card.Exists = true
+	}
+	return card, nil
+}
+
+// UpdateUserRoles records the grant and reflects it into the stored card so the
+// save-then-reload flow sees the new roles.
+func (f *fakeMongoCatalog) UpdateUserRoles(_ context.Context, database, username string, roles []engine.RoleRef) error {
+	f.updateRoles.database = database
+	f.updateRoles.username = username
+	f.updateRoles.roles = roles
+	if f.updateRoles.err != nil {
+		return f.updateRoles.err
+	}
+	f.userCard.Roles = roles
+	return nil
 }
 
 func TestMongoTreeLoadsCatalog(t *testing.T) {

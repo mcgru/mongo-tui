@@ -127,6 +127,17 @@ type mongoCardMsg struct {
 	err  error
 }
 
+type userCardMsg struct {
+	card engine.UserCard
+	err  error
+}
+
+// userRolesMsg carries the freshly read card after UpdateUserRoles.
+type userRolesMsg struct {
+	card engine.UserCard
+	err  error
+}
+
 // Model is the bubbletea model for the whole application.
 type Model struct {
 	opts   Options
@@ -189,12 +200,20 @@ type Model struct {
 	tree      *tree
 	// mongoCard is the MongoDB collection card.
 	mongoCard *engine.CollectionCard
-	cardOff   int
-	msgOff    int
-	focus     focus
-	tab       paneTab
-	tx        engine.TxState
-	running   bool
+	// mongoUser is the open user card in the OBJECT pane. userRows is the
+	// editable role list (current grants plus addable builtin roles on the
+	// user's home database), userRoleCursor highlights a row, userDirty marks
+	// unsaved toggles.
+	mongoUser      *engine.UserCard
+	userRows       []userEditRow
+	userRoleCursor int
+	userDirty      bool
+	cardOff        int
+	msgOff         int
+	focus          focus
+	tab            paneTab
+	tx             engine.TxState
+	running        bool
 
 	history       []historyEntry
 	hist          histState
@@ -296,12 +315,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.focus = focusTree
 		m.grid = nil
 		m.mongoCard = nil
+		m.closeUserCard()
 		m.openObject = ""
 		m.scopeCollection = ""
 		m.messages = nil
 		m.tab = tabResult
 		m.mongoSnap = nil
 		m.tx = engine.TxIdle
+		m.pendingDatabase = ""
 		m.cardOff = 0
 		m.msgOff = 0
 		m.dbStates = nil
@@ -372,6 +393,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// A query result takes over the OBJECT pane; the collection card is
 			// one Enter away in the tree.
 			m.mongoCard = nil
+			m.closeUserCard()
 			m.openObject = ""
 		}
 
@@ -417,6 +439,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.grid = nil
 		m.mongoCard = nil
+		m.closeUserCard()
 		m.openObject = ""
 		m.scopeCollection = ""
 		m.tab = tabResult
@@ -530,6 +553,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.cardOff = 0
 		m.tab = tabObject
+		return m, nil
+
+	case userCardMsg:
+		if msg.err != nil {
+			m.messages = []string{msg.err.Error()}
+			m.tab = tabMessages
+			m.status = "user card failed"
+			return m, nil
+		}
+		m.showUserCard(msg.card)
+		return m, nil
+
+	case userRolesMsg:
+		if msg.err != nil {
+			m.messages = []string{msg.err.Error()}
+			m.tab = tabMessages
+			m.status = "roles not saved"
+			return m, nil
+		}
+		m.showUserCard(msg.card)
+		m.status = "roles saved for " + msg.card.Username
 		return m, nil
 
 	case tea.MouseMsg:
@@ -1338,6 +1382,12 @@ func (m Model) handleTreeKey(key string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// With a user card open the OBJECT pane owns the navigation keys: the tree
+	// cursor pauses so arrows walk the role list instead.
+	if m.mongoUser != nil {
+		return m.handleUserCardKey(key)
+	}
+
 	// Commands come from the keymap; arrows, Enter and Esc below are fixed
 	// context navigation and stay where they are in every pane.
 	switch {
@@ -1408,6 +1458,11 @@ func (m Model) handleTreeKey(key string) (tea.Model, tea.Cmd) {
 	case "left", "h":
 		m.tree.collapse()
 	case "right", "l":
+		if m.isMongo() {
+			if node := m.tree.current(); node != nil && node.kind == nodeUser {
+				return m, m.userCardCmd(node)
+			}
+		}
 		if node := m.tree.toggle(); node != nil {
 			return m, m.loadNodeCmd(node)
 		}
@@ -1420,6 +1475,8 @@ func (m Model) handleTreeKey(key string) (tea.Model, tea.Cmd) {
 			case nodeIndex:
 				m.status = node.detail
 				return m, nil
+			case nodeUser:
+				return m, m.userCardCmd(node)
 			}
 		}
 		if node != nil && node.kind == nodeDatabase {
@@ -1495,6 +1552,138 @@ func (m Model) mongoCardCmd(node *treeNode) tea.Cmd {
 		defer cancel()
 		card, err := cat.CollectionCard(ctx, database, collection)
 		return mongoCardMsg{card: card, err: err}
+	}
+}
+
+// userCardCmd reads one user's definition for the OBJECT pane.
+func (m Model) userCardCmd(node *treeNode) tea.Cmd {
+	cat, ok := m.sess.(engine.Catalog)
+	if !ok {
+		return func() tea.Msg {
+			return userCardMsg{err: errors.New("this session does not expose a MongoDB catalog")}
+		}
+	}
+	database, username := node.schema, node.name
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+		defer cancel()
+		card, err := cat.UserCard(ctx, database, username)
+		return userCardMsg{card: card, err: err}
+	}
+}
+
+// userEditRow is one row of the role checklist in the user card: a grant and
+// whether it is kept. current marks an existing grant; addable rows are builtin
+// database roles the user does not have yet.
+type userEditRow struct {
+	ref     engine.RoleRef
+	checked bool
+	current bool
+}
+
+// buildUserRows seeds the checklist with the user's real roles (kept) plus the
+// builtin database roles on their home database that are not granted yet.
+func buildUserRows(card engine.UserCard) []userEditRow {
+	rows := make([]userEditRow, 0, len(card.Roles)+len(builtinDBRoles))
+	granted := map[string]bool{}
+	for _, role := range card.Roles {
+		rows = append(rows, userEditRow{ref: role, checked: true, current: true})
+		granted[role.DB+"\x00"+role.Role] = true
+	}
+	for _, role := range builtinDBRoles {
+		if granted[card.Database+"\x00"+role] {
+			continue
+		}
+		rows = append(rows, userEditRow{ref: engine.RoleRef{Role: role, DB: card.Database}})
+	}
+	return rows
+}
+
+// showUserCard installs a user card and a fresh editable role list.
+func (m *Model) showUserCard(card engine.UserCard) {
+	m.mongoCard = nil
+	m.mongoUser = &card
+	m.userRows = buildUserRows(card)
+	m.userRoleCursor = 0
+	m.userDirty = false
+	m.openObject = ""
+	m.scopeCollection = ""
+	m.cardOff = 0
+	m.tab = tabObject
+	if !card.Exists {
+		m.status = "user " + card.Username + " not found"
+	} else {
+		m.status = card.Username + " @ " + card.Database +
+			"   Space toggle role   Enter save   Esc close"
+	}
+}
+
+// closeUserCard drops the user card and returns the tree to normal navigation.
+func (m *Model) closeUserCard() {
+	m.mongoUser = nil
+	m.userRows = nil
+	m.userRoleCursor = 0
+	m.userDirty = false
+	m.status = ""
+}
+
+// handleUserCardKey edits the staged role set: arrows move, Space toggles,
+// Enter saves (and reloads the card), Esc closes without saving.
+func (m Model) handleUserCardKey(key string) (tea.Model, tea.Cmd) {
+	if m.mongoUser == nil {
+		return m, nil
+	}
+	last := len(m.userRows) - 1
+	switch key {
+	case "up", "k":
+		if m.userRoleCursor > 0 {
+			m.userRoleCursor--
+		}
+	case "down", "j":
+		if m.userRoleCursor < last {
+			m.userRoleCursor++
+		}
+	case " ":
+		if m.userRoleCursor >= 0 && m.userRoleCursor < len(m.userRows) {
+			m.userRows[m.userRoleCursor].checked = !m.userRows[m.userRoleCursor].checked
+			m.userDirty = true
+		}
+	case "enter":
+		if m.userDirty {
+			return m, m.saveUserRolesCmd()
+		}
+	case "esc":
+		m.closeUserCard()
+	}
+	return m, nil
+}
+
+// saveUserRolesCmd applies the kept grants with UpdateUserRoles, then re-reads
+// the card so the pane shows the server's authoritative roles.
+func (m Model) saveUserRolesCmd() tea.Cmd {
+	if m.mongoUser == nil {
+		return nil
+	}
+	card := *m.mongoUser
+	roles := make([]engine.RoleRef, 0, len(m.userRows))
+	for _, row := range m.userRows {
+		if row.checked {
+			roles = append(roles, row.ref)
+		}
+	}
+	sess := m.sess
+	return func() tea.Msg {
+		cat, ok := sess.(engine.Catalog)
+		if !ok {
+			return userRolesMsg{err: errors.New("user management is not available")}
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+		defer cancel()
+		if err := cat.UpdateUserRoles(ctx, card.Database, card.Username, roles); err != nil {
+			return userRolesMsg{err: err}
+		}
+		fresh, err := cat.UserCard(ctx, card.Database, card.Username)
+		return userRolesMsg{card: fresh, err: err}
 	}
 }
 
@@ -1679,6 +1868,8 @@ func (m *Model) closeSession() {
 	m.mongoSnap = nil
 	m.comp = compState{}
 	m.mongoCard = nil
+	m.closeUserCard()
+	m.pendingDatabase = ""
 }
 
 func (m Model) updateInput(msg tea.Msg) (tea.Model, tea.Cmd) {
