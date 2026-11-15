@@ -99,7 +99,9 @@ The tree lists databases, collections, views, indexes, users and roles.
 `Enter` on a database switches the session to it; `Enter` on a collection opens
 a card with sampled fields, indexes, statistics, options and the JSON Schema
 validator. `F5` reloads a branch. The current database is marked in the tree
-and in the header.
+and in the header. A write that creates or removes a collection (insert, upsert,
+createCollection, drop, rename) reloads that database's Collections folder
+automatically, so the change shows without a reload or re-login.
 
 `+` on the **Databases** folder stages a new database: it asks for a name, does a
 client-side `use` so you can start writing to it at once, and shows it faded pink.

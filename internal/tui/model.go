@@ -95,6 +95,10 @@ type execDoneMsg struct {
 	// executed, so the cursor stays at cursorAt instead of a fresh line.
 	keepCursor bool
 	cursorAt   int
+	// A successful write can change the current database's collection list.
+	// refreshDB is that database and refreshName is the newly created collection
+	// (empty for drops/renames), so the tree reloads without a re-login.
+	refreshDB, refreshName string
 }
 
 type cancelDoneMsg struct {
@@ -411,11 +415,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		m.status = status
-		// A staged database is real only once MongoDB lists it. After a write
-		// while one is staged, reload the list so the pending marker can resolve
-		// to the green current database.
-		if m.pendingDatabase != "" {
-			return m, m.reloadDatabasesCmd()
+		// A write can materialize a staged database or create a collection; reload
+		// the affected tree branch so it appears without a re-login.
+		if msg.refreshDB != "" || m.pendingDatabase != "" {
+			db := msg.refreshDB
+			if db == "" {
+				db = m.currentDatabase()
+			}
+			restored, cmd := m.revealAfterWrite(db, msg.refreshName)
+			return restored, cmd
 		}
 		return m, nil
 
@@ -1296,6 +1304,96 @@ func (m Model) revealUser(username string) (Model, tea.Cmd) {
 	return restored.(Model), cmd
 }
 
+// revealAfterWrite reloads the tree branch a write changed so the new
+// collection (or a database the write just materialized) shows without a
+// re-login, then moves the cursor onto the collection when it is known.
+func (m Model) revealAfterWrite(database, collection string) (Model, tea.Cmd) {
+	if m.tree == nil || database == "" {
+		return m, nil
+	}
+	// A provisional database that this write materialized must drop its pink
+	// marker, so the whole Databases folder is re-listed before we walk into it.
+	if m.pendingDatabase != "" {
+		if folder := m.treeChild("Databases"); folder != nil {
+			folder.loaded = false
+			folder.children = nil
+			folder.err = ""
+		}
+	}
+	// The Collections folder likely caches the stale list; reset it so the walk
+	// refetches it and the new collection appears.
+	if db := m.findDatabaseNode(database); db != nil {
+		if folder := findNamedChild(db, "Collections"); folder != nil {
+			folder.loaded = false
+			folder.children = nil
+			folder.err = ""
+		}
+	}
+	m.pendingPath = []string{"Databases", database, "Collections"}
+	if collection != "" {
+		m.pendingPath = append(m.pendingPath, collection)
+	}
+	m.pendingOpen = ""
+	m.pendingWaiting = ""
+	m.pendingFinal = ""
+	m.tree.rebuild()
+	restored, cmd := m.continuePath()
+	return restored.(Model), cmd
+}
+
+// findDatabaseNode returns the loaded nodeDatabase for a database name, or nil
+// when that branch has not been listed yet.
+func (m Model) findDatabaseNode(database string) *treeNode {
+	folder := m.treeChild("Databases")
+	if folder == nil {
+		return nil
+	}
+	for _, db := range folder.children {
+		if db.kind == nodeDatabase && strings.EqualFold(db.title, database) {
+			return db
+		}
+	}
+	return nil
+}
+
+// findNamedChild returns a direct child with this title, or nil.
+func findNamedChild(node *treeNode, title string) *treeNode {
+	if node == nil {
+		return nil
+	}
+	for _, child := range node.children {
+		if child.title == title {
+			return child
+		}
+	}
+	return nil
+}
+
+// opChangesCollections reports whether a successful write can add or remove a
+// collection in the current database.
+func opChangesCollections(spec mongoquery.Spec) bool {
+	switch spec.Op {
+	case mongoquery.InsertOne, mongoquery.InsertMany, mongoquery.CreateCollection,
+		mongoquery.DropCollection, mongoquery.RenameCollection:
+		return true
+	case mongoquery.UpdateOne, mongoquery.UpdateMany, mongoquery.ReplaceOne:
+		return spec.Upsert
+	}
+	return false
+}
+
+// opCreatesCollection reports the ops that bring the named collection into
+// existence, so the tree can navigate straight to it.
+func opCreatesCollection(spec mongoquery.Spec) bool {
+	switch spec.Op {
+	case mongoquery.InsertOne, mongoquery.InsertMany, mongoquery.CreateCollection:
+		return true
+	case mongoquery.UpdateOne, mongoquery.UpdateMany, mongoquery.ReplaceOne:
+		return spec.Upsert
+	}
+	return false
+}
+
 // treeSelect moves the cursor to the first visible row with this title.
 func (m *Model) treeSelect(title string) bool {
 	if m.tree == nil {
@@ -1789,6 +1887,7 @@ func (m Model) execCmd(statements []string, cursorAt int) tea.Cmd {
 		start := time.Now()
 		var last engine.Result
 		marks := make(map[string]execMark, len(statements))
+		var refreshDB, refreshName string
 
 		for _, statement := range statements {
 			res, err := sess.Execute(context.Background(), statement)
@@ -1805,19 +1904,33 @@ func (m Model) execCmd(statements []string, cursorAt int) tea.Cmd {
 				break
 			}
 			marks[normalizeStatement(statement)] = markOK
+			// A write that can change the collection list tells the tree to
+			// reload; for a creation we also learn which collection to reveal.
+			if spec, _, perr := mongoquery.ParseRequest(statement); perr == nil && opChangesCollections(spec) {
+				db := spec.Database
+				if db == "" {
+					db = m.currentDatabase()
+				}
+				refreshDB, refreshName = db, ""
+				if opCreatesCollection(spec) {
+					refreshName = spec.Collection
+				}
+			}
 		}
 
 		txCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 		return execDoneMsg{
-			statement:  strings.Join(statements, ";\n"),
-			statements: len(statements),
-			marks:      marks,
-			result:     last,
-			duration:   time.Since(start),
-			tx:         sess.TxState(txCtx),
-			keepCursor: cursorAt >= 0,
-			cursorAt:   cursorAt,
+			statement:   strings.Join(statements, ";\n"),
+			statements:  len(statements),
+			marks:       marks,
+			result:      last,
+			duration:    time.Since(start),
+			tx:          sess.TxState(txCtx),
+			keepCursor:  cursorAt >= 0,
+			cursorAt:    cursorAt,
+			refreshDB:   refreshDB,
+			refreshName: refreshName,
 		}
 	}
 }

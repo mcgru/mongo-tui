@@ -1247,6 +1247,31 @@ insert создаёт коллекцию первой записью. `+` на �
   валидных запроса, Ctrl+J берёт только под курсором); `TestMongoRunMultipleRequests`
   переведён на выделение.
 
+### Пользователь
+
+> после добавления коллекции (нового документа в коллекцию), в MESSAGES пишется, что-де "создан документ", а окно explorer не обновляется, коллекция там становится видна только когда перелогинешься. Нужно, видимо, чтобы после создания документа в новую коллекцию - коллекция начала отображаться.
+
+### Ответ
+
+Причина: `execDoneMsg` при успехе перезагружал дерево только для provisional-базы
+(`pendingDatabase`); обычная запись, создающая коллекцию, список `Collections` не
+обновлял, и коллекция была видна только после перелогина.
+
+- `execDoneMsg` теперь несёт `refreshDB`/`refreshName`; `execCmd` разбирает
+  успешное выражение и выставляет их, если операция меняет список коллекций
+  (`insertOne`/`insertMany`, upsert-обновления, `createCollection`, `dropCollection`,
+  `renameCollection`).
+- `revealAfterWrite(database, collection)` сбрасывает `loaded` у папки
+  `Collections` затронутой базы (и у `Databases`, если база была provisional),
+  ставит `pendingPath=[Databases, db, Collections, coll]` и ведёт через
+  `continuePath` — курсор встаёт на новую коллекцию.
+- Хелперы `opChangesCollections`/`opCreatesCollection`/`findDatabaseNode`/
+  `findNamedChild`. Ветка `pendingDatabase` в успехе заменена на `revealAfterWrite`.
+- README EN/RU и PRD §4.2 обновлены. Тесты: `TestExecCmdFlagsCollectionWrites`
+  (insert/create/upsert помечают, find/update без upsert — нет),
+  `TestRevealAfterWriteResetsStaleCollections` (устаревшая папка сброшена, ветка
+  перезагружена, навигация на новую коллекцию).
+
 
 
 
