@@ -214,6 +214,7 @@ type Model struct {
 	userDirty      bool
 	cardOff        int
 	msgOff         int
+	colOff         int
 	focus          focus
 	tab            paneTab
 	tx             engine.TxState
@@ -329,6 +330,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.pendingDatabase = ""
 		m.cardOff = 0
 		m.msgOff = 0
+		m.colOff = 0
 		m.dbStates = nil
 		m.pendingPath = nil
 		m.pendingOpen = ""
@@ -403,6 +405,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Show the output where it actually is: rows in RESULT, anything else in
 		// MESSAGES, so a CREATE does not look like a no-op.
+		m.colOff = 0
 		switch {
 		case msg.result.Error:
 			m.tab = tabMessages
@@ -491,8 +494,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			msg.node.loaded = true
 			msg.node.expanded = true
 			msg.node.err = ""
-			m.reconcilePendingDatabases(msg.node)
 		}
+		// The connected database must stay navigable even if listing failed.
+		m.reconcileDatabases(msg.node)
 		m.tree.rebuild()
 
 		// Advance the restore chain only when the load it asked for finished;
@@ -560,6 +564,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.scopeCollection = ""
 		}
 		m.cardOff = 0
+		m.colOff = 0
 		m.tab = tabObject
 		return m, nil
 
@@ -838,12 +843,16 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case m.keys.Is(config.ActionFocusBack, key):
 		return m.focusPrev()
 
-	case m.keys.Is(config.ActionPanes, key) || key == "ctrl+t":
+	// "[" and "]" are the only pane switchers, and never while the editor has
+	// focus — there [ and ] must type JSON arrays and pipelines.
+	case m.focus != focusEditor && m.keys.Is(config.ActionPanes, key):
 		m.tab = nextPane(m.tab)
+		m.colOff = 0
 		return m, nil
 
-	case m.keys.Is(config.ActionPanesBack, key):
+	case m.focus != focusEditor && m.keys.Is(config.ActionPanesBack, key):
 		m.tab = prevPane(m.tab)
+		m.colOff = 0
 		return m, nil
 
 	case m.keys.Is(config.ActionLeftWider, key):
@@ -893,30 +902,10 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.scrollPane(-1)
 	case "down", "j":
 		m.scrollPane(1)
-	case "left", "shift+left":
-		if key == "left" {
-			m.tab = prevPane(m.tab)
-			return m, nil
-		}
-		if m.tab == tabResult {
-			m.grid.move(0, -1, m.gridHeight(), m.gridWidth())
-		}
-	case "right", "shift+right":
-		if key == "right" {
-			m.tab = nextPane(m.tab)
-			return m, nil
-		}
-		if m.tab == tabResult {
-			m.grid.move(0, 1, m.gridHeight(), m.gridWidth())
-		}
-	case "h":
-		if m.tab == tabResult {
-			m.grid.move(0, -1, m.gridHeight(), m.gridWidth())
-		}
-	case "l":
-		if m.tab == tabResult {
-			m.grid.move(0, 1, m.gridHeight(), m.gridWidth())
-		}
+	case "left", "shift+left", "h":
+		m.scrollPaneX(-1)
+	case "right", "shift+right", "l":
+		m.scrollPaneX(1)
 	case "pgup":
 		m.scrollPane(-m.resultPage())
 	case "pgdown":
@@ -1186,6 +1175,7 @@ func (m Model) openNewDatabase() (tea.Model, tea.Cmd) {
 // createPendingDatabase stages a database the session switches to right away (a
 // client-side "use"), which MongoDB materializes only once a document is written.
 // The node stays faded pink until listDatabases reports the database as real.
+// Choosing the database already connected to is allowed: it just reveals it.
 func (m Model) createPendingDatabase(name string) (tea.Model, tea.Cmd) {
 	m.scr = screenMain
 	m.focus = focusTree
@@ -1197,21 +1187,19 @@ func (m Model) createPendingDatabase(name string) (tea.Model, tea.Cmd) {
 	if m.sess == nil {
 		return m, nil
 	}
-	if strings.EqualFold(name, m.sess.Summary().Database) {
-		m.status = "already on " + name
-		return m, nil
-	}
-	if err := m.sess.SwitchDatabase(context.Background(), name); err != nil {
-		m.status = err.Error()
-		return m, nil
+	if !strings.EqualFold(name, m.sess.Summary().Database) {
+		if err := m.sess.SwitchDatabase(context.Background(), name); err != nil {
+			m.status = err.Error()
+			return m, nil
+		}
 	}
 	m.pendingDatabase = name
 	if m.tree != nil && m.tree.root != nil {
 		m.tree.root.title = "MongoDB " + name
 	}
-	// Reuse the pending-cursor mechanism to land on the staged node after reload.
+	// Reuse the pending-cursor mechanism to land on the node after reload.
 	m.pendingCursor = name
-	m.status = "staged database " + name + " — created once you write a document"
+	m.status = "database " + name + " — a document creates it on the server"
 	return m, m.reloadDatabasesCmd()
 }
 
@@ -1232,30 +1220,41 @@ func (m Model) reloadDatabasesCmd() tea.Cmd {
 	return m.loadNodeCmd(folder)
 }
 
-// reconcilePendingDatabases runs after a Databases load: while the server has not
-// created the staged database it appends a pink node, and once the name shows up
-// in the real list it clears the pending marker so the node renders as current.
-func (m *Model) reconcilePendingDatabases(node *treeNode) {
-	if m.pendingDatabase == "" || node.title != "Databases" {
+// reconcileDatabases keeps the connected database reachable in the tree even
+// when the server does not list it: an empty database is absent from
+// listDatabases, and a low-privilege user (e.g. readWrite on one db) cannot call
+// listDatabases at all. Without a node there is no way down to Collections and
+// the first collection cannot be written. We append the current database, faded
+// pink until the server starts reporting it itself.
+func (m *Model) reconcileDatabases(node *treeNode) {
+	if node.title != "Databases" {
+		return
+	}
+	name := m.currentDatabase()
+	if name == "" {
 		return
 	}
 	for _, child := range node.children {
-		if child.kind == nodeDatabase && strings.EqualFold(child.title, m.pendingDatabase) {
+		if child.kind == nodeDatabase && strings.EqualFold(child.title, name) {
 			child.current = true
+			child.pending = false
 			m.pendingDatabase = ""
 			return
 		}
 	}
 	staged := &treeNode{
 		kind:    nodeDatabase,
-		title:   m.pendingDatabase,
-		pending: true,
+		title:   name,
 		current: true,
+		pending: true,
 	}
 	if cat, ok := m.sess.(engine.Catalog); ok {
-		staged.load = mongoDatabaseLoader(cat, m.pendingDatabase)
+		staged.load = mongoDatabaseLoader(cat, name)
 	}
 	node.children = append(node.children, staged)
+	// Make it reachable even when listDatabases itself failed.
+	node.loaded = true
+	node.expanded = true
 }
 
 // validMongoDatabaseName rejects the characters MongoDB forbids in a database
@@ -1616,6 +1615,19 @@ func (m *Model) scrollPane(delta int) {
 	}
 }
 
+// scrollPaneX slides the right-hand pane sideways: the grid by columns, the
+// text panes by a horizontal cell offset.
+func (m *Model) scrollPaneX(delta int) {
+	switch m.tab {
+	case tabResult:
+		if m.grid != nil {
+			m.grid.move(0, delta, m.gridHeight(), m.gridWidth())
+		}
+	case tabObject, tabMessages:
+		m.colOff = maxInt(0, m.colOff+delta)
+	}
+}
+
 func (m Model) loadNodeCmd(node *treeNode) tea.Cmd {
 	load := node.load
 	return func() tea.Msg {
@@ -1719,6 +1731,7 @@ func (m *Model) showUserCard(card engine.UserCard) {
 	m.openObject = ""
 	m.scopeCollection = ""
 	m.cardOff = 0
+	m.colOff = 0
 	m.tab = tabObject
 	if !card.Exists {
 		m.status = "user " + card.Username + " not found"

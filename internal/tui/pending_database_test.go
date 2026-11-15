@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -133,6 +134,57 @@ func TestValidMongoDatabaseName(t *testing.T) {
 		if validMongoDatabaseName(name) {
 			t.Fatalf("validMongoDatabaseName(%q) = true, want false", name)
 		}
+	}
+}
+
+// The connected database must stay navigable even when the server does not list
+// it — an empty db is absent from listDatabases, and a readWrite-only user cannot
+// call it at all. Otherwise Collections/Views are unreachable and the first
+// collection can never be created without a re-login.
+func TestCurrentDatabaseNavigableWhenNotListed(t *testing.T) {
+	fake := &fakeMongoCatalog{
+		fakeSession:  &fakeSession{info: engine.Info{ServerVersion: "8.0.38", Database: "tmpdb"}},
+		databasesErr: errors.New("not authorized on admin to execute command"),
+		collections:  map[string][]engine.Item{"tmpdb": {}},
+	}
+	m := mongoModel(t, fake)
+
+	cmd := m.reloadDatabasesCmd()
+	if cmd == nil {
+		t.Fatal("no reload command")
+	}
+	after, _ := m.Update(cmd())
+	m = after.(Model)
+
+	node := findDatabaseNode(m.treeChild("Databases"), "tmpdb")
+	if node == nil || !node.current {
+		t.Fatalf("tmpdb node = %+v, want present and current", node)
+	}
+	if node.load == nil {
+		t.Fatal("tmpdb node must be expandable (has a loader)")
+	}
+}
+
+// Choosing the already-connected database must not bail with "already on": it
+// reveals/creates the node so Collections can be opened.
+func TestCreatePendingDatabaseOnCurrentReveals(t *testing.T) {
+	fake := &fakeMongoCatalog{
+		fakeSession: &fakeSession{info: engine.Info{ServerVersion: "8.0.38", Database: "tmpdb"}},
+		databases:   []engine.Item{{Name: "other"}},
+	}
+	m := mongoModel(t, fake)
+
+	_, cmd := m.createPendingDatabase("tmpdb")
+	if cmd == nil {
+		t.Fatal("expected a reload command, not an early return")
+	}
+	if _, ok := cmd().(loadNodeMsg); !ok {
+		t.Fatal("reload should target the Databases folder")
+	}
+	after, _ := m.Update(cmd())
+	m = after.(Model)
+	if node := findDatabaseNode(m.treeChild("Databases"), "tmpdb"); node == nil || !node.pending {
+		t.Fatalf("tmpdb node = %+v, want a synthesized pending node", node)
 	}
 }
 

@@ -63,14 +63,54 @@ func (g *grid) empty() bool {
 
 // move shifts the cursor. Visible size is passed in so the view can keep the
 // cursor on screen.
-func (g *grid) move(dRow, dCol, visibleRows, visibleCols int) {
+func (g *grid) move(dRow, dCol, visibleRows, width int) {
 	if g.empty() {
 		return
 	}
 	g.curRow = clampInt(g.curRow+dRow, 0, maxInt(0, len(g.res.Rows)-1))
 	g.curCol = clampInt(g.curCol+dCol, 0, maxInt(0, len(g.res.Columns)-1))
-	_ = visibleRows
-	_ = visibleCols
+	if dCol != 0 {
+		g.scrollColIntoView(width)
+	}
+}
+
+// scrollColIntoView keeps the cursor column inside the horizontal window by
+// moving the left column offset. width is the cell budget of the RESULT pane.
+func (g *grid) scrollColIntoView(width int) {
+	if len(g.widths) == 0 {
+		return
+	}
+	if g.colOff < 0 {
+		g.colOff = 0
+	}
+	for g.curCol < g.colOff {
+		g.colOff--
+	}
+	if g.colOff < 0 {
+		g.colOff = 0
+	}
+	for g.colOff < len(g.widths)-1 && g.curCol >= g.columnEnd(g.colOff, width) {
+		g.colOff++
+	}
+}
+
+// columnEnd returns the first column index that no longer fits after `from`,
+// counting each cell width plus a one-space separator.
+func (g *grid) columnEnd(from, width int) int {
+	used := 0
+	to := from
+	for to < len(g.widths) {
+		next := g.widths[to] + 1
+		if used+next > width && to > from {
+			break
+		}
+		used += next
+		to++
+	}
+	if to == from {
+		to = from + 1
+	}
+	return to
 }
 
 // currentRowTSV renders the cursor row for the clipboard: NULL becomes an empty
@@ -160,20 +200,7 @@ func (g *grid) lines(width, height int) []string {
 
 func (g *grid) visibleColumns(width int) (int, int) {
 	from := clampInt(g.colOff, 0, maxInt(0, len(g.widths)-1))
-	used := 0
-	to := from
-	for to < len(g.widths) {
-		next := g.widths[to] + 1
-		if used+next > width && to > from {
-			break
-		}
-		used += next
-		to++
-	}
-	if to == from {
-		to = from + 1
-	}
-	return from, to
+	return from, g.columnEnd(from, width)
 }
 
 func (g *grid) scrollRows(visible int) {

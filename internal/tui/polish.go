@@ -198,7 +198,8 @@ const helpFixed = `  Tab / Enter     accept a completion
   Esc, Esc        remove the template that was just inserted (before any edit)
   Shift+arrows    select text in the editor
   Ctrl+A          select everything in the editor
-  arrows          tree navigation or grid movement
+  arrows          tree navigation; in the result/object pane ← / → scroll wide
+                  output sideways (use [ and ] to change panes)
   Right           expand a tree node
   Left            collapse a tree node
   Enter / Space   database: switch the session

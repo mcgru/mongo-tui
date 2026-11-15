@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
 
@@ -423,7 +424,7 @@ func (m Model) mongoDocumentLines(width, height int) []string {
 		"",
 	}
 	lines = append(lines, strings.Split(pretty.String(), "\n")...)
-	return window(lines, m.cardOff, height, width)
+	return window(lines, m.cardOff, m.colOff, height, width)
 }
 
 // mongoCardLines renders a collection card: observed fields, indexes, stats,
@@ -484,7 +485,7 @@ func (m Model) mongoCardLines(width, height int) []string {
 		}
 	}
 
-	return window(lines, m.cardOff, height, width)
+	return window(lines, m.cardOff, m.colOff, height, width)
 }
 
 // mongoUserLines renders the user card: who they are, then an editable role
@@ -539,7 +540,7 @@ func (m Model) mongoUserLines(width, height int) []string {
 	if roleStart+m.userRoleCursor >= visible {
 		off = roleStart + m.userRoleCursor - visible + 1
 	}
-	return window(lines, off, height, width)
+	return window(lines, off, m.colOff, height, width)
 }
 
 func prettyJSONLines(text string) []string {
@@ -566,8 +567,9 @@ func formatBytes(n int64) string {
 	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTPE"[exp])
 }
 
-// window returns a slice of lines starting at off, keeping styled lines whole.
-func window(lines []string, off, height, width int) []string {
+// window returns a slice of lines starting at off, kept to width cells from the
+// left edge colOff so the right pane can scroll wide output sideways.
+func window(lines []string, off, colOff, height, width int) []string {
 	if height <= 0 {
 		return nil
 	}
@@ -580,12 +582,53 @@ func window(lines []string, off, height, width int) []string {
 	}
 	out := make([]string, 0, end-off)
 	for _, line := range lines[off:end] {
-		if !strings.Contains(line, "\x1b") {
-			line = truncate(line, maxInt(1, width))
-		}
-		out = append(out, line)
+		out = append(out, hclip(line, colOff, maxInt(1, width)))
 	}
 	return out
+}
+
+// hclip keeps width visible cells of a styled or plain line starting at off.
+// ANSI escape sequences are copied through and take no cells, so colours survive
+// a sideways scroll of the right pane.
+func hclip(line string, off, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if off < 0 {
+		off = 0
+	}
+	if !strings.Contains(line, "\x1b") {
+		runes := []rune(line)
+		if off >= len(runes) {
+			return ""
+		}
+		return truncate(string(runes[off:]), width)
+	}
+	var b strings.Builder
+	visible := 0
+	written := 0
+	for i := 0; i < len(line); {
+		if line[i] == 0x1b { // ESC … m : copy the whole sequence, no cell
+			j := i
+			for j < len(line) && line[j] != 'm' {
+				j++
+			}
+			if j < len(line) {
+				j++ // include the terminating 'm'
+			}
+			b.WriteString(line[i:j])
+			i = j
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(line[i:])
+		if visible >= off && written < width {
+			b.WriteRune(r)
+			written++
+		}
+		visible++
+		i += size
+	}
+	return b.String()
 }
 
 func (m Model) messageLines(width, height int) []string {
@@ -595,10 +638,10 @@ func (m Model) messageLines(width, height int) []string {
 	var lines []string
 	for _, msg := range m.messages {
 		for _, line := range strings.Split(msg, "\n") {
-			lines = append(lines, truncate(line, maxInt(8, width)))
+			lines = append(lines, line)
 		}
 	}
-	return window(lines, m.msgOff, height, width)
+	return window(lines, m.msgOff, m.colOff, height, width)
 }
 
 // footerLine shows the status and the keys that work right now, so the hint
@@ -644,9 +687,16 @@ func (m Model) footerKeys() string {
 				}
 				return base + help
 			case focusGrid:
-				return "↑↓ move  PgUp/PgDn document  " + key(config.ActionCopyCell) +
+				hint := "↑↓ move  PgUp/PgDn document"
+				if m.tab == tabResult {
+					hint = "↑↓←→ move cell  PgUp/PgDn page"
+				} else {
+					hint = "↑↓ scroll  ←→ sideways"
+				}
+				return hint + "  " + key(config.ActionCopyCell) +
 					" cell  " + key(config.ActionCopyRow) + " row  " +
-					key(config.ActionPanes) + " panes  " + key(config.ActionFocus) + " focus" + help
+					key(config.ActionPanesBack) + "/" + key(config.ActionPanes) + " panes  " +
+					key(config.ActionFocus) + " focus" + help
 			default:
 				return key(config.ActionRun) + " run request  " + key(config.ActionHistory) +
 					" history  " + key(config.ActionEditStatement) + " edit  " +

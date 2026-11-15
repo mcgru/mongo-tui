@@ -12,15 +12,16 @@ import (
 
 type fakeMongoCatalog struct {
 	*fakeSession
-	databases   []engine.Item
-	collections map[string][]engine.Item
-	views       map[string][]engine.Item
-	indexes     map[string][]engine.Item
-	users       []engine.Item
-	roles       []engine.Item
-	card        engine.CollectionCard
-	userCard    engine.UserCard
-	updateRoles struct {
+	databases    []engine.Item
+	databasesErr error
+	collections  map[string][]engine.Item
+	views        map[string][]engine.Item
+	indexes      map[string][]engine.Item
+	users        []engine.Item
+	roles        []engine.Item
+	card         engine.CollectionCard
+	userCard     engine.UserCard
+	updateRoles  struct {
 		database, username string
 		roles              []engine.RoleRef
 		err                error
@@ -33,6 +34,9 @@ type fakeMongoCatalog struct {
 }
 
 func (f *fakeMongoCatalog) Databases(context.Context) ([]engine.Item, error) {
+	if f.databasesErr != nil {
+		return nil, f.databasesErr
+	}
 	return f.databases, nil
 }
 

@@ -101,13 +101,17 @@ a card with sampled fields, indexes, statistics, options and the JSON Schema
 validator. `F5` reloads a branch. The current database is marked in the tree
 and in the header. A write that creates or removes a collection (insert, upsert,
 createCollection, drop, rename) reloads that database's Collections folder
-automatically, so the change shows without a reload or re-login.
+automatically, so the change shows without a reload or re-login. The database you
+are connected to is always navigable in the tree, even when it is empty (not in
+`listDatabases`) or you lack the right to list databases — so its Collections
+stay reachable and you can write the first document.
 
 `+` on the **Databases** folder stages a new database: it asks for a name, does a
 client-side `use` so you can start writing to it at once, and shows it faded pink.
 MongoDB only creates a database when a document is written into it, so the staged
 database turns into a real, current (green) one as soon as it appears in
-`listDatabases` — leaving it for another database first drops the stage.
+`listDatabases` — leaving it for another database first drops the stage. Choosing
+the database you are already on just reveals it.
 
 The collection card distinguishes fields observed in a sample from index keys
 and validator properties, and shows the collection stats. Fields are a sample,
@@ -156,7 +160,9 @@ the state file.
 - `Ctrl+J` runs the request under the cursor, or the selection (`Ctrl+A` runs
   the whole buffer); `Ctrl+R` history, `Ctrl+Space` completion.
 - `Ctrl+F1` help; F1 is also bound, but Konsole may keep it.
-- `Tab`/`Shift+Tab` focus; `]`/`[` switch RESULT/OBJECT/MESSAGES.
+- `Tab`/`Shift+Tab` focus; `]`/`[` are the only RESULT/OBJECT/MESSAGES switchers.
+  In the right pane `←`/`→` scroll wide output sideways, not tabs; `[`/`]` type
+  normally while the editor has focus.
 - `Ctrl+←/→` resize the tree; `Ctrl+↑/↓` move the result/editor divider.
 - `c` copies the cell, `C` copies the row as TSV through OSC 52.
 - `/`, `p`, `+`, `-`, `=` insert MongoDB templates; `.` inserts a name.
