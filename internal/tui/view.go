@@ -29,6 +29,10 @@ var (
 	abortBadge      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("9"))
 	currentDBStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("10"))
 	openObjectStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("13"))
+	// pendingDBStyle paints a staged database that is not on the server yet:
+	// faded pink, distinct from the magenta open-object marker and the green
+	// current database.
+	pendingDBStyle = lipgloss.NewStyle().Faint(true).Foreground(lipgloss.Color("176"))
 )
 
 var (
@@ -77,6 +81,13 @@ func (m Model) View() string {
 			"The connection is stored without a password. Enter a name to find it in the picker.",
 			m.input.View(),
 			"Enter save    Esc cancel",
+		)
+	case screenNewDatabase:
+		return m.viewPrompt(
+			"New database",
+			"Stage a database with the current name. MongoDB creates it only when a document is written, so it stays faded pink until then.",
+			m.input.View(),
+			"Enter stage    Esc cancel",
 		)
 	case screenConnecting:
 		return m.viewConnecting()
@@ -602,7 +613,7 @@ func (m Model) footerKeys() string {
 				key(config.ActionFocus) + " focus" + help
 		}
 
-	case screenSaveProfile, screenInput, screenPassword:
+	case screenSaveProfile, screenInput, screenPassword, screenNewDatabase:
 		return "Enter confirm  Esc cancel"
 	case screenConnecting:
 		return key(config.ActionQuit) + " quit"

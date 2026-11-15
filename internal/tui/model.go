@@ -49,6 +49,7 @@ const (
 	screenMain
 	screenError
 	screenSaveProfile
+	screenNewDatabase
 )
 
 type focus int
@@ -169,6 +170,10 @@ type Model struct {
 	openObject string
 	// scopeCollection narrows completion to the collection opened from the tree.
 	scopeCollection string
+	// pendingDatabase is the name of a staged database the session switched to
+	// with "+" but that MongoDB has not created yet (no collection with a
+	// document). It shows faded pink and clears once listDatabases reports it.
+	pendingDatabase string
 	// discardPending is the first of the two Esc presses that remove a template.
 	discardPending bool
 
@@ -384,6 +389,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		m.status = status
+		// A staged database is real only once MongoDB lists it. After a write
+		// while one is staged, reload the list so the pending marker can resolve
+		// to the green current database.
+		if m.pendingDatabase != "" {
+			return m, m.reloadDatabasesCmd()
+		}
 		return m, nil
 
 	case userUpsertMsg:
@@ -449,6 +460,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			msg.node.loaded = true
 			msg.node.expanded = true
 			msg.node.err = ""
+			m.reconcilePendingDatabases(msg.node)
 		}
 		m.tree.rebuild()
 
@@ -628,6 +640,17 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.scr = screenMain
 			m.saveProfile(label)
 			return m, nil
+		}
+		return m.updateInput(msg)
+
+	case screenNewDatabase:
+		switch key {
+		case "esc":
+			m.scr = screenMain
+			return m, nil
+		case "enter":
+			name := m.input.Value()
+			return m.createPendingDatabase(name)
 		}
 		return m.updateInput(msg)
 
@@ -1078,6 +1101,9 @@ func (m Model) switchDatabase(database string) (tea.Model, tea.Cmd) {
 		m.status = "already connected to " + database
 		return m, nil
 	}
+	// Moving to another (real) database abandons any staged one — it never
+	// existed on the server, so it should not linger in the list.
+	m.pendingDatabase = ""
 	m.rememberPlace()
 	m.status = "switching to " + database + "…"
 	return m, m.switchCmd(database)
@@ -1090,6 +1116,97 @@ func (m Model) switchCmd(database string) tea.Cmd {
 		defer cancel()
 		return switchedMsg{database: database, err: sess.SwitchDatabase(ctx, database)}
 	}
+}
+
+// openNewDatabase asks for a name for the database to stage with "+" on Databases.
+func (m Model) openNewDatabase() (tea.Model, tea.Cmd) {
+	m.scr = screenNewDatabase
+	m.input = newDatabaseNameInput()
+	return m, m.input.Focus()
+}
+
+// createPendingDatabase stages a database the session switches to right away (a
+// client-side "use"), which MongoDB materializes only once a document is written.
+// The node stays faded pink until listDatabases reports the database as real.
+func (m Model) createPendingDatabase(name string) (tea.Model, tea.Cmd) {
+	m.scr = screenMain
+	m.focus = focusTree
+	name = strings.TrimSpace(name)
+	if !validMongoDatabaseName(name) {
+		m.status = "invalid database name"
+		return m, nil
+	}
+	if m.sess == nil {
+		return m, nil
+	}
+	if strings.EqualFold(name, m.sess.Summary().Database) {
+		m.status = "already on " + name
+		return m, nil
+	}
+	if err := m.sess.SwitchDatabase(context.Background(), name); err != nil {
+		m.status = err.Error()
+		return m, nil
+	}
+	m.pendingDatabase = name
+	if m.tree != nil && m.tree.root != nil {
+		m.tree.root.title = "MongoDB " + name
+	}
+	// Reuse the pending-cursor mechanism to land on the staged node after reload.
+	m.pendingCursor = name
+	m.status = "staged database " + name + " — created once you write a document"
+	return m, m.reloadDatabasesCmd()
+}
+
+// reloadDatabasesCmd re-lists Databases so a staged database appears and resolves.
+func (m Model) reloadDatabasesCmd() tea.Cmd {
+	if m.tree == nil {
+		return nil
+	}
+	folder := m.treeChild("Databases")
+	if folder == nil {
+		return nil
+	}
+	folder.loaded = false
+	folder.children = nil
+	folder.expanded = true
+	folder.err = ""
+	m.tree.rebuild()
+	return m.loadNodeCmd(folder)
+}
+
+// reconcilePendingDatabases runs after a Databases load: while the server has not
+// created the staged database it appends a pink node, and once the name shows up
+// in the real list it clears the pending marker so the node renders as current.
+func (m *Model) reconcilePendingDatabases(node *treeNode) {
+	if m.pendingDatabase == "" || node.title != "Databases" {
+		return
+	}
+	for _, child := range node.children {
+		if child.kind == nodeDatabase && strings.EqualFold(child.title, m.pendingDatabase) {
+			child.current = true
+			m.pendingDatabase = ""
+			return
+		}
+	}
+	staged := &treeNode{
+		kind:    nodeDatabase,
+		title:   m.pendingDatabase,
+		pending: true,
+		current: true,
+	}
+	if cat, ok := m.sess.(engine.Catalog); ok {
+		staged.load = mongoDatabaseLoader(cat, m.pendingDatabase)
+	}
+	node.children = append(node.children, staged)
+}
+
+// validMongoDatabaseName rejects the characters MongoDB forbids in a database
+// name (and empties); the server stays the final authority.
+func validMongoDatabaseName(name string) bool {
+	if name == "" {
+		return false
+	}
+	return !strings.ContainsAny(name, ` ./"\*<>:|?$`)
 }
 
 // upsertUserCmd runs UpsertUser on the live session.
@@ -1244,7 +1361,13 @@ func (m Model) handleTreeKey(key string) (tea.Model, tea.Cmd) {
 		m.status = "object editing is not available for MongoDB"
 		return m, nil
 	case m.keys.Is(config.ActionCreateTemplate, key):
-		if node := m.tree.current(); node != nil {
+		node := m.tree.current()
+		// "+" on the Databases folder stages a new database; on any other node
+		// it stays the create-collection/create-index template.
+		if node != nil && node.kind == nodeFolder && node.title == "Databases" {
+			return m.openNewDatabase()
+		}
+		if node != nil {
 			return m.insertDdl(node, ddlCreate), nil
 		}
 		return m, nil
@@ -1658,6 +1781,14 @@ func newPasswordInput() textinput.Model {
 	ti.EchoMode = textinput.EchoPassword
 	ti.EchoCharacter = '•'
 	ti.CharLimit = 512
+	ti.Width = 40
+	return ti
+}
+
+func newDatabaseNameInput() textinput.Model {
+	ti := textinput.New()
+	ti.Placeholder = "database"
+	ti.CharLimit = 128
 	ti.Width = 40
 	return ti
 }

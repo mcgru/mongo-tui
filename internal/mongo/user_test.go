@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"mongo-tui/internal/engine"
 )
 
 func TestLiveUpsertUser(t *testing.T) {
@@ -62,4 +64,43 @@ func userDetail(t *testing.T, s *Session, username string) string {
 		t.Fatalf("Users() = %v, want %q", users, username)
 	}
 	return item.Detail
+}
+
+// TestLiveDatabaseMaterializesOnWrite checks the assumption behind staging a
+// database: it is absent from listDatabases until a document is written into it.
+func TestLiveDatabaseMaterializesOnWrite(t *testing.T) {
+	ctx := context.Background()
+	s := liveSession(t, ConnectOptions{})
+	db := newTestDB(t, s)
+
+	if err := s.SwitchDatabase(ctx, db); err != nil {
+		t.Fatalf("SwitchDatabase() error = %v", err)
+	}
+
+	dbs := mustDatabases(t, s)
+	if _, ok := findItem(dbs, db); ok {
+		t.Fatalf("Databases() lists %q before any data was written", db)
+	}
+
+	if _, err := s.client.Database(db).Collection("seed").InsertOne(ctx, d(e("a", 1))); err != nil {
+		t.Fatalf("InsertOne() error = %v", err)
+	}
+
+	dbs = mustDatabases(t, s)
+	item, ok := findItem(dbs, db)
+	if !ok {
+		t.Fatalf("Databases() = %v, want %q after a document is written", dbs, db)
+	}
+	if !item.Current {
+		t.Fatalf("materialized %q should be marked current", db)
+	}
+}
+
+func mustDatabases(t *testing.T, s *Session) []engine.Item {
+	t.Helper()
+	dbs, err := s.Databases(context.Background())
+	if err != nil {
+		t.Fatalf("Databases() error = %v", err)
+	}
+	return dbs
 }

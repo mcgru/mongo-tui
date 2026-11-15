@@ -37,6 +37,11 @@ type treeNode struct {
 	// current marks the database the session is connected to.
 	current bool
 
+	// pending marks a database staged client-side (use before any document is
+	// written): it is not on the server yet, so the tree paints it faded pink
+	// until MongoDB starts listing it.
+	pending bool
+
 	// Identity for the object card and for MQL templates.
 	schema string
 	name   string
@@ -233,7 +238,7 @@ func (t *tree) lines(width, height int, openObject string) []string {
 	for i := t.off; i < len(t.visible) && len(out) < height; i++ {
 		node := t.visible[i]
 		open := openObject != "" && nodeKey(node) == openObject
-		out = append(out, renderNodeLine(node, i == t.cursor, open, false, width))
+		out = append(out, renderNodeLine(node, i == t.cursor, open, node.current, width))
 	}
 	return out
 }
@@ -307,6 +312,8 @@ func renderNodeLine(node *treeNode, selected, open, chosen bool, width int) stri
 	switch {
 	case selected:
 		return activeTitle.Render(head) + extrasView
+	case node.pending:
+		return pendingDBStyle.Render(plainHead) + extrasView
 	case open:
 		return openObjectStyle.Render(plainHead) + extrasView
 	case chosen:

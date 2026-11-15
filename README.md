@@ -101,6 +101,12 @@ a card with sampled fields, indexes, statistics, options and the JSON Schema
 validator. `F5` reloads a branch. The current database is marked in the tree
 and in the header.
 
+`+` on the **Databases** folder stages a new database: it asks for a name, does a
+client-side `use` so you can start writing to it at once, and shows it faded pink.
+MongoDB only creates a database when a document is written into it, so the staged
+database turns into a real, current (green) one as soon as it appears in
+`listDatabases` — leaving it for another database first drops the stage.
+
 The collection card distinguishes fields observed in a sample from index keys
 and validator properties, and shows the collection stats. Fields are a sample,
 not a schema.

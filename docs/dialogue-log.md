@@ -1133,5 +1133,35 @@ authSource по умолчанию — admin.
   toggle — `[read readWrite]`, пустая отметка не создаёт, выбор из нескольких
   URI → чеклист → Esc возвращается к списку URI.
 
+### Пользователь
+
+> как мне вызвать `use dbname` и где? как создать новую базу данных? предлагаю нажатием `+` на Databases, но оно не должно сразу создавать, должно как бы "временно" создать её (присвоив какой-нить блёкло-розовый цвет), пока не закоммитил какую-нить коллекцию с документом - вот тогда уже создать базу как следует, и в списке в цет раскрасить как "текеущую" (зелёным).
+
+### Ответ
+
+`use dbname` в mongo-tui — это Enter на узле базы в дереве (Databases → база →
+Enter), он зовёт `Session.SwitchDatabase` (чисто клиентская, соединение и
+транзакция сохраняются). Добавлено заготовление новой базы по `+`.
+
+- По `+` на папке Databases открывается промпт имени (`screenNewDatabase`),
+  паттерн поля ввода `screenSaveProfile`.
+- `treeNode.pending` + стиль `pendingDBStyle` (блёкло-розовый, Color 176 faint);
+  приоритет рендера: selected > pending > open(◆) > current(зелёный).
+- `createPendingDatabase`: валидация имени (запрет ` $./\*"<>:|?`), синхронный
+  `SwitchDatabase`, `Model.pendingDatabase`, заголовок корня, `reloadDatabasesCmd`.
+- `reconcilePendingDatabases` в `loadNodeMsg`: пока сервер не показывает базу —
+  добавляет provisional-узел; как только `listDatabases` её вернул — снимает
+  pending и рендерит как текущую (зелёную).
+- `execDoneMsg`: успешная запись при активной provisional перезагружает Databases
+  (материализация); `switchDatabase` на другую базу убирает provisional.
+- Попутно заведена подсветка текущей базы зелёным в списке: `lines()` передаёт
+  `node.current` в `chosen` (раньше был жёсткий `false`).
+- README EN/RU и PRD §4.2 обновлены. Тесты: `+` открывает промпт; stage добавляет
+  узел; разрешение при появлении в списке; невалидное имя отвергается; запись с
+  provisional даёт команду перезагрузки; switch чистит pending; живой
+  `TestLiveDatabaseMaterializesOnWrite` (пустая база не в списке → после InsertOne
+  появляется и помечена current).
+
+
 
 
