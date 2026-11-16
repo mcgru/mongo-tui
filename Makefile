@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 BIN     := bin/mongo-tui
 PKG     := ./cmd/mongo-tui
-VERSION ?= 0.1.0-dev
+VERSION ?= 0.1.1-dev
 LDFLAGS := -s -w -X main.version=$(VERSION)
 GO      ?= go
 
@@ -16,6 +16,9 @@ help: ## Show this help
 
 build: ## Build bin/mongo-tui
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN) $(PKG)
+
+build-static: ## Build bin/mongo-tui
+	CGO_ENABLED=0 $(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN) $(PKG)
 
 run: ## Run from source, extra args in ARGS (make run ARGS="--help")
 	$(GO) run $(PKG) $(ARGS)
