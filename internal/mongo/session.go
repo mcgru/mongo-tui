@@ -58,6 +58,8 @@ type Session struct {
 
 	// reqMu serializes requests: one operation at a time.
 	reqMu sync.Mutex
+	// page is the live cursor of the last paged read, if any. Guarded by reqMu.
+	page *pageState
 	// commentMu guards the comment of the request Cancel may kill.
 	commentMu sync.Mutex
 	comment   string
@@ -184,6 +186,12 @@ func (s *Session) SwitchDatabase(_ context.Context, database string) error {
 	if database == "" {
 		return errors.New("empty database name")
 	}
+	// A cursor belongs to the old database; nothing should page across the
+	// switch.
+	s.reqMu.Lock()
+	s.closePageLocked()
+	s.reqMu.Unlock()
+
 	s.dbMu.Lock()
 	s.dbName = database
 	s.dbMu.Unlock()
@@ -201,6 +209,10 @@ func (s *Session) TxState(context.Context) engine.TxState {
 func (s *Session) Close() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+
+	s.reqMu.Lock()
+	s.closePageLocked()
+	s.reqMu.Unlock()
 
 	s.txMu.Lock()
 	if s.txSess != nil {

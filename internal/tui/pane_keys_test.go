@@ -120,6 +120,59 @@ func TestBracketsSwitchPanes(t *testing.T) {
 	}
 }
 
+// The cursor travels inside the visible part of the grid and the column window
+// follows only when it reaches the right edge, like a spreadsheet.
+func TestGridCursorTravelsBeforeScrolling(t *testing.T) {
+	res := &engine.Result{
+		Columns: []string{"aaaaaaaa", "bbbbbbbb", "cccccccc", "dddddddd", "eeeeeeee"},
+		Rows:    [][]string{{"1", "2", "3", "4", "5"}},
+	}
+	m := Model{tab: tabResult, grid: newGrid(res), width: 60, height: 30}
+
+	for i := 0; i < 2; i++ {
+		m.scrollPaneX(1)
+	}
+	if m.grid.curCol != 2 || m.grid.colOff != 0 {
+		t.Fatalf("cursor %d/off %d after two rights, want 2/0", m.grid.curCol, m.grid.colOff)
+	}
+
+	m.scrollPaneX(1)
+	if m.grid.curCol != 3 || m.grid.colOff != 1 {
+		t.Fatalf("cursor %d/off %d at the right edge, want 3/1", m.grid.curCol, m.grid.colOff)
+	}
+
+	for i := 0; i < 3; i++ {
+		m.scrollPaneX(-1)
+	}
+	if m.grid.curCol != 0 || m.grid.colOff != 0 {
+		t.Fatalf("cursor %d/off %d after returning left, want 0/0", m.grid.curCol, m.grid.colOff)
+	}
+}
+
+// Vertical movement keeps the row inside the window until it hits the bottom.
+func TestGridRowsTravelBeforeScrolling(t *testing.T) {
+	rows := make([][]string, 20)
+	for i := range rows {
+		rows[i] = []string{"value"}
+	}
+	g := newGrid(&engine.Result{Columns: []string{"field"}, Rows: rows})
+
+	const height = 7 // header + separator leave five visible rows
+	for i := 0; i < 4; i++ {
+		g.move(1, 0, 80)
+	}
+	g.lines(80, height)
+	if g.rowOff != 0 {
+		t.Fatalf("rowOff = %d while the cursor is still visible, want 0", g.rowOff)
+	}
+
+	g.move(1, 0, 80)
+	g.lines(80, height)
+	if g.rowOff != 1 {
+		t.Fatalf("rowOff = %d after the cursor leaves the window, want 1", g.rowOff)
+	}
+}
+
 // In the editor [ and ] must type text, not switch panes.
 func TestBracketsTypeInEditor(t *testing.T) {
 	m := newPaneModel(t)

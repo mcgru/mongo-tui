@@ -182,9 +182,11 @@ var helpActions = []struct {
 	{config.ActionResultShorter, "shorter result pane"},
 	{config.ActionCopyCell, "copy the cell under the cursor"},
 	{config.ActionCopyRow, "copy the whole row as TSV"},
+	{config.ActionLoadMore, "RESULT: append the next page of a peeked query"},
+	{config.ActionLoadAll, "RESULT: load a peeked query up to the row/byte limits"},
 	{config.ActionKeyboardLayout, "toggle the command-key layout: us / ru"},
 	{config.ActionSelectTemplate, "collection/view: find template; RESULT grid: regexp search"},
-	{config.ActionPeek, "collection or view: run a limited find (p or the key above Enter)"},
+	{config.ActionPeek, "collection or view: run a paged find, 30 rows first (p or the key above Enter)"},
 	{config.ActionInsertName, "insert the selected name where the editor cursor was left"},
 	{config.ActionCreateTemplate, "database or Collections: new document; collection: createIndex; Users: import user"},
 	{config.ActionDropTemplate, "drop the selected collection or index"},
@@ -236,10 +238,17 @@ and Esc clears the highlight. The i key toggles case sensitivity for future
 searches; Ctrl+I cannot be used because terminals send it as Tab. q is an
 ordinary character in the pattern, so it does not leave the search.
 
-Command keys follow the keyboard layout stored in state: with layout ru the
-Cyrillic key on the same physical position acts as its US key (з is p, т is n,
-х is [, . is /), while text fields still type Cyrillic. Ctrl+L toggles us/ru
-and saves the choice; when no layout is stored, it is detected from the locale.
+Peek shows the first 30 rows and keeps the server cursor open: the more key
+appends the next page, the all key drains the cursor up to result_limit_rows
+and result_limit_bytes. The search covers the rows loaded so far. A new query
+or a database switch closes the cursor.
+
+Cyrillic command keys always act as the US key on the same physical position
+(з is p, т is n, ь is m, Ф is A, х is [), even when the stored layout is us or
+the locale is wrong; text fields still type Cyrillic. With layout ru the
+punctuation of the Russian layout also works (. is /), because in the US layout
+. must stay a period. Ctrl+L toggles us/ru and saves the choice; when no layout
+is stored, it is detected from the locale.
 
 The insert key pastes the selected name into the editor where its cursor was
 left and keeps the focus in the tree, adding a space after the name — so a

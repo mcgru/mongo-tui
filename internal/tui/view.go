@@ -658,6 +658,10 @@ func (m Model) footerKeys() string {
 						caseHint = "i ignore-case"
 					}
 					hint += "  " + key(config.ActionSelectTemplate) + " search  " + caseHint
+					if m.pageMore {
+						hint += "  " + key(config.ActionLoadMore) + " more  " +
+							key(config.ActionLoadAll) + " all"
+					}
 				} else {
 					hint = "↑↓ scroll  ←→ sideways"
 				}

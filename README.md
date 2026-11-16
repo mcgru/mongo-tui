@@ -119,7 +119,7 @@ not a schema.
 
 `Ctrl+Space` completes databases, collections, methods, fields, query/update
 operators, aggregation stages and JSON values. `/` inserts a find, `p` (or the
-key above Enter) runs a limited find, `+` on a database or its **Collections** folder inserts a ready
+key above Enter) runs a paged find showing the first 30 rows, `+` on a database or its **Collections** folder inserts a ready
 new-document `insertOne` (which creates the collection on the first write,
 `createdAt` filled, cursor on the name), `+` on a collection inserts
 `createIndex`, `+` on the **Users** folder imports a user (the same as `i`), `-`
@@ -133,6 +133,12 @@ jump to the next/previous match (wrapping), and `Esc` clears the search. The
 pattern is a Go regexp; `q` is an ordinary character in it, so it does not leave
 the search. `i` switches future searches between case-sensitive and ignore-case
 (less's `-i`); Ctrl+I cannot be bound because terminals send it as Tab.
+
+Paging keeps the server cursor open instead of loading a whole collection. Peek
+shows the first 30 rows; `m` appends the next page, and `A` drains the cursor up
+to `result_limit_rows` and `result_limit_bytes`, stopping with a truncated
+status instead of growing without bound. The search covers the rows loaded so
+far; a new query or a database switch closes the cursor.
 
 `Enter` (or `→`) on a **Users** row opens a focused role-editor window over the
 panes. It lists the databases the session can see, the databases where the user
@@ -178,12 +184,16 @@ the state file.
 - `Ctrl+←/→` resize the tree; `Ctrl+↑/↓` move the result/editor divider. Sizes
   are remembered in `state.json` — per saved profile, with a global fallback for
   ad-hoc URIs.
-- Command keys understand the Russian layout: with `keyboard_layout = "ru"` the
-  Cyrillic key on the same physical position acts as its US key (`з` is `p`,
-  `т` is `n`, `х` is `[`, `.` is `/`), while text fields still type Cyrillic.
-  `Ctrl+L` toggles us/ru and saves it for the profile or globally; without a
-  stored value the layout is detected from `LC_ALL`/`LC_CTYPE`/`LANG`.
+- Cyrillic command keys always act as the US key on the same physical position
+  (`з` is `p`, `т` is `n`, `ь` is `m`, `Ф` is `A`, `х` is `[`), even when the
+  stored layout is `us` or the locale is wrong; text fields still type
+  Cyrillic. `keyboard_layout = "ru"` additionally maps the Russian punctuation
+  (`.` is `/`), since in the US layout `.` must stay a period. `Ctrl+L` toggles
+  us/ru and saves it for the profile or globally; without a stored value the
+  layout is detected from `LC_ALL`/`LC_CTYPE`/`LANG`.
 - `c` copies the cell, `C` copies the row as TSV through OSC 52.
+- In RESULT `m` appends the next page of a peeked query, `A` loads it up to the
+  result limits; `/` searches the loaded rows, `n`/`N` walk the matches.
 - `/`, `p`, `+`, `-`, `=` insert MongoDB templates (in RESULT, `/` searches the
   current column); `.` inserts a name.
 - `Ctrl+Q` quits; `Ctrl+C` cancels a running request, then quits.

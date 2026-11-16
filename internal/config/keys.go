@@ -34,6 +34,11 @@ const (
 	ActionCopyRow         Action = "copy_row"
 	ActionKeyboardLayout  Action = "keyboard_layout"
 
+	// Grid paging. Peek returns one small page; more appends the next one and
+	// all drains the cursor up to the result limits.
+	ActionLoadMore Action = "load_more"
+	ActionLoadAll  Action = "load_all"
+
 	// Tree actions. They carry the same meaning as in less: / searches an
 	// object, * edits it.
 	ActionSelectTemplate Action = "select_template"
@@ -72,6 +77,8 @@ var defaultKeys = map[Action]string{
 	ActionCopyCell:        "c",
 	ActionCopyRow:         "C",
 	ActionKeyboardLayout:  "ctrl+l",
+	ActionLoadMore:        "m",
+	ActionLoadAll:         "A",
 
 	// / searches like less does: it turns the object into a SELECT.
 	ActionSelectTemplate: "/",

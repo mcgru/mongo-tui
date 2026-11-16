@@ -21,8 +21,22 @@ func TestNormalizeRussianCommandKeys(t *testing.T) {
 			t.Errorf("normalize(ru, %q) = %q, want %q", raw, got, want)
 		}
 	}
-	if got := normalizeCommandKey(layoutUS, "з"); got != "з" {
-		t.Errorf("normalize(us, з) = %q, want з unchanged", got)
+	// A Cyrillic command key works even when the stored layout is wrong: the
+	// locale may say en_US while the user still types Russian.
+	if got := normalizeCommandKey(layoutUS, "з"); got != "p" {
+		t.Errorf("normalize(us, з) = %q, want p", got)
+	}
+	if got := normalizeCommandKey(layoutUS, "ь"); got != "m" {
+		t.Errorf("normalize(us, ь) = %q, want m", got)
+	}
+	if got := normalizeCommandKey(layoutUS, "Ф"); got != "A" {
+		t.Errorf("normalize(us, Ф) = %q, want A", got)
+	}
+	// ASCII punctuation keeps its meaning in the US layout.
+	for _, raw := range []string{".", ",", ";", ":"} {
+		if got := normalizeCommandKey(layoutUS, raw); got != raw {
+			t.Errorf("normalize(us, %q) = %q, want unchanged", raw, got)
+		}
 	}
 }
 

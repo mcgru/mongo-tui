@@ -99,6 +99,19 @@ type execDoneMsg struct {
 	// refreshDB is that database and refreshName is the newly created collection
 	// (empty for drops/renames), so the tree reloads without a re-login.
 	refreshDB, refreshName string
+	// paged marks a result that kept its cursor open; more says the cursor may
+	// still hold rows.
+	paged bool
+	more  bool
+}
+
+// pageDoneMsg carries the rows appended by load-more or load-all.
+type pageDoneMsg struct {
+	result engine.Result
+	more   bool
+	all    bool
+	took   time.Duration
+	err    error
 }
 
 type cancelDoneMsg struct {
@@ -218,7 +231,9 @@ type Model struct {
 	keyboardLayout string
 	editor         editor
 	grid           *grid
-	tree           *tree
+	// pageMore says the session still holds rows of the peeked query.
+	pageMore bool
+	tree     *tree
 	// mongoCard is the MongoDB collection card.
 	mongoCard *engine.CollectionCard
 	// roles is the modal role editor for one user; nil when it is closed.
@@ -388,6 +403,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case execDoneMsg:
 		m.running = false
+		m.pageMore = false
 		if msg.err != nil {
 			m.history = m.rememberStatement(msg.statement, msg.err.Error(), true)
 			m.messages = []string{msg.err.Error()}
@@ -409,6 +425,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		status := describeResult(msg.result, msg.duration)
 		if msg.statements > 1 {
 			status += fmt.Sprintf(" · %d statements", msg.statements)
+		}
+		if msg.paged {
+			m.pageMore = msg.more && !msg.result.Error
+			status += m.pageHint(m.pageMore)
 		}
 		m.history = m.rememberStatement(msg.statement, status, msg.result.Error)
 		m.tx = msg.tx
@@ -454,6 +474,36 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case pageDoneMsg:
+		m.running = false
+		if msg.err != nil {
+			m.pageMore = false
+			m.status = "load failed: " + msg.err.Error()
+			m.messages = []string{msg.err.Error()}
+			return m, nil
+		}
+		if m.grid == nil {
+			m.grid = newGrid(&msg.result)
+		} else {
+			m.grid.appendResult(&msg.result)
+		}
+		m.pageMore = msg.more
+
+		total := 0
+		if m.grid != nil && m.grid.res != nil {
+			total = len(m.grid.res.Rows)
+		}
+		parts := []string{fmt.Sprintf("%d rows", total)}
+		if msg.result.RowCount > 0 {
+			parts = append(parts, fmt.Sprintf("%d ms", msg.took.Milliseconds()))
+		}
+		if msg.result.Truncated {
+			parts = append(parts, "truncated at the result limits")
+		}
+		m.status = strings.Join(parts, " · ") + m.pageHint(m.pageMore)
+		m.tab = tabResult
+		return m, nil
+
 	case userUpsertMsg:
 		if msg.err != nil {
 			m.status = "user " + msg.username + " failed"
@@ -473,6 +523,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.grid = nil
+		m.pageMore = false
 		m.mongoCard = nil
 		m.closeRoleEditor()
 		m.openObject = ""
@@ -948,6 +999,10 @@ func (m Model) handleMainKey(msg tea.KeyMsg, key string) (tea.Model, tea.Cmd) {
 	// n / N walk the matches and Esc clears the search.
 	if m.focus == focusGrid {
 		switch {
+		case m.tab == tabResult && m.keys.Is(config.ActionLoadMore, key):
+			return m.loadPage(false)
+		case m.tab == tabResult && m.keys.Is(config.ActionLoadAll, key):
+			return m.loadPage(true)
 		case m.keys.Is(config.ActionSelectTemplate, key):
 			return m.openGridSearch()
 		case m.tab == tabResult && key == "n":
@@ -1017,21 +1072,13 @@ func (m Model) insertSelectTemplate(node *treeNode) Model {
 	return m.insertStatement(fmt.Sprintf("%s.find({}).limit(100)", mongoCollectionRef(node.name)))
 }
 
-// starSelectLimit is twice the visible height of the result pane: peeking
-// shows about two screens of rows, which is enough to recognise the data
-// without dragging a whole table into the terminal.
-func (m Model) peekLimit() int {
-	_, _, resultH, _ := m.layout()
-	rows := resultH - 4
-	if rows < 5 {
-		rows = 5
-	}
-	return rows * 2
-}
+// peekPageRows is the first page of a peek. The session keeps the cursor open,
+// so m appends the next page and A drains it up to the result limits; a huge
+// collection never arrives in memory just because it was peeked.
+const peekPageRows = 30
 
-// runPeekSelect puts a limited SELECT * for the relation into the editor and
-// runs it at once. The statement lands in the buffer already marked as
-// executed, so all that is left for the user is to read the result.
+// runPeekSelect puts a find for the relation into the editor and shows its
+// first page. The statement is marked executed, so the user only reads it.
 func (m Model) runPeekSelect(node *treeNode) (tea.Model, tea.Cmd) {
 	if node.kind != nodeCollection {
 		m.status = "peek is for collections"
@@ -1044,11 +1091,92 @@ func (m Model) runPeekSelect(node *treeNode) (tea.Model, tea.Cmd) {
 	if m.sess == nil || m.running {
 		return m, nil
 	}
-	statement := fmt.Sprintf("%s.find({}).limit(%d)", mongoCollectionRef(node.name), m.peekLimit())
+
+	pager, paged := m.sess.(engine.Pager)
+	statement := fmt.Sprintf("%s.find({})", mongoCollectionRef(node.name))
+	if !paged {
+		statement += fmt.Sprintf(".limit(%d)", peekPageRows)
+	}
 	start := m.editor.AppendStatement(statement)
 	m.running = true
+	m.pageMore = false
 	m.status = "running " + node.name
+	if paged {
+		return m, m.peekPagedCmd(pager, statement, start)
+	}
 	return m, m.execCmd([]string{statement}, start)
+}
+
+// peekPagedCmd runs the first page of a peek and keeps the cursor for more.
+func (m Model) peekPagedCmd(pager engine.Pager, statement string, cursorAt int) tea.Cmd {
+	sess := m.sess
+	return func() tea.Msg {
+		start := time.Now()
+		res, more, err := pager.RunPaged(context.Background(), statement, peekPageRows)
+		txCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+
+		mark := markOK
+		if err != nil || res.Error {
+			mark = markFailed
+		}
+		return execDoneMsg{
+			statement:  statement,
+			statements: 1,
+			marks:      map[string]execMark{normalizeStatement(statement): mark},
+			result:     res,
+			duration:   time.Since(start),
+			tx:         sess.TxState(txCtx),
+			keepCursor: true,
+			cursorAt:   cursorAt,
+			paged:      true,
+			more:       more,
+			err:        err,
+		}
+	}
+}
+
+// loadPage extends the peeked grid: one more page, or everything left under
+// the result limits.
+func (m Model) loadPage(all bool) (tea.Model, tea.Cmd) {
+	if m.grid == nil || m.grid.empty() {
+		m.status = "no result to extend"
+		return m, nil
+	}
+	if m.running {
+		m.status = "a statement is already running"
+		return m, nil
+	}
+	if _, ok := m.sess.(engine.Pager); !ok {
+		m.status = "paged loading is not available"
+		return m, nil
+	}
+	if !m.pageMore {
+		m.status = "end of result"
+		return m, nil
+	}
+	m.running = true
+	m.tab = tabResult
+	if all {
+		m.status = "loading all rows up to the result limits…"
+	} else {
+		m.status = "loading more rows…"
+	}
+	return m, m.loadPageCmd(all)
+}
+
+func (m Model) loadPageCmd(all bool) tea.Cmd {
+	pager, ok := m.sess.(engine.Pager)
+	if !ok {
+		return nil
+	}
+	return func() tea.Msg {
+		start := time.Now()
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		res, more, err := pager.FetchPage(ctx, all)
+		return pageDoneMsg{result: res, more: more, all: all, took: time.Since(start), err: err}
+	}
 }
 
 // insertDdl puts a MongoDB template for the node into the editor.
@@ -1677,7 +1805,7 @@ func (m Model) handleTreeKey(key string) (tea.Model, tea.Cmd) {
 func (m *Model) scrollPane(delta int) {
 	switch m.tab {
 	case tabResult:
-		m.grid.move(delta, 0, m.gridHeight(), m.gridWidth())
+		m.grid.move(delta, 0, m.gridContentWidth())
 	case tabObject:
 		m.cardOff = maxInt(0, m.cardOff+delta)
 	case tabMessages:
@@ -1691,7 +1819,7 @@ func (m *Model) scrollPaneX(delta int) {
 	switch m.tab {
 	case tabResult:
 		if m.grid != nil {
-			m.grid.move(0, delta, m.gridHeight(), m.gridWidth())
+			m.grid.move(0, delta, m.gridContentWidth())
 		}
 	case tabObject, tabMessages:
 		m.colOff = maxInt(0, m.colOff+delta)
@@ -1871,6 +1999,7 @@ func (m Model) startRun() (tea.Model, tea.Cmd) {
 	}
 
 	m.running = true
+	m.pageMore = false
 	if len(statements) > 1 {
 		m.status = fmt.Sprintf("running %d statements…", len(statements))
 	} else {
@@ -2055,18 +2184,11 @@ func (m *Model) resize() {
 	}
 }
 
-func (m Model) gridHeight() int {
-	if m.grid.empty() {
-		return 1
-	}
-	return maxInt(1, len(m.grid.res.Rows))
-}
-
-func (m Model) gridWidth() int {
-	if m.grid.empty() {
-		return 1
-	}
-	return maxInt(1, len(m.grid.res.Columns))
+// gridContentWidth is the cell budget the RESULT pane hands to grid.lines;
+// it follows layout() so the cursor window matches what is actually drawn.
+func (m Model) gridContentWidth() int {
+	_, rightW, _, _ := m.layout()
+	return maxInt(1, rightW-4)
 }
 
 func profileURI(p config.Profile) (string, bool) {
@@ -2103,6 +2225,15 @@ func needsPassword(err error) bool {
 		strings.Contains(text, "authentication failed") ||
 		strings.Contains(text, "requires authentication") ||
 		strings.Contains(text, "scram")
+}
+
+// pageHint advertises the paging keys while the cursor still holds rows.
+func (m Model) pageHint(more bool) string {
+	if !more {
+		return " · end of result"
+	}
+	return " · " + m.keys.Get(config.ActionLoadMore) + " more · " +
+		m.keys.Get(config.ActionLoadAll) + " all"
 }
 
 func describeResult(res engine.Result, took time.Duration) string {

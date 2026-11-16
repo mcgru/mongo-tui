@@ -77,9 +77,86 @@ func (g *grid) empty() bool {
 	return g == nil || g.res == nil || len(g.res.Columns) == 0
 }
 
-// move shifts the cursor. Visible size is passed in so the view can keep the
-// cursor on screen.
-func (g *grid) move(dRow, dCol, visibleRows, width int) {
+// appendResult merges one more page into the grid. Columns first seen in the
+// new page are appended, rows are remapped to the grid's column order, and a
+// live search is re-evaluated over the grown set without moving the cursor.
+func (g *grid) appendResult(res *engine.Result) {
+	if res == nil || len(res.Columns) == 0 {
+		return
+	}
+	if g.res == nil {
+		*g = *newGrid(res)
+		return
+	}
+
+	index := make(map[string]int, len(g.res.Columns))
+	for i, name := range g.res.Columns {
+		index[name] = i
+	}
+	for i, name := range res.Columns {
+		if _, ok := index[name]; ok {
+			continue
+		}
+		typ := ""
+		if i < len(res.ColumnTypes) {
+			typ = res.ColumnTypes[i]
+		}
+		header := name
+		if typ != "" {
+			header += " " + typ
+		}
+		index[name] = len(g.res.Columns)
+		g.res.Columns = append(g.res.Columns, name)
+		g.res.ColumnTypes = append(g.res.ColumnTypes, typ)
+		g.headers = append(g.headers, header)
+		g.widths = append(g.widths, clampLen(displayWidth(header), 3, maxCellWidth))
+		// Rows loaded before this column existed mark it as missing, not as an
+		// empty string.
+		for r := range g.res.Rows {
+			g.res.Rows[r] = append(g.res.Rows[r], engine.MissingSentinel)
+		}
+	}
+
+	for r, src := range res.Rows {
+		row := make([]string, len(g.res.Columns))
+		for i := range row {
+			row[i] = engine.MissingSentinel
+		}
+		for i, name := range res.Columns {
+			idx, ok := index[name]
+			if !ok {
+				continue
+			}
+			value := engine.MissingSentinel
+			if i < len(src) {
+				value = src[i]
+			}
+			row[idx] = value
+			if w := clampLen(displayWidth(cellText(value)), 3, maxCellWidth); w > g.widths[idx] {
+				g.widths[idx] = w
+			}
+		}
+		g.res.Rows = append(g.res.Rows, row)
+		var raw []byte
+		if r < len(res.Documents) {
+			raw = res.Documents[r]
+		}
+		g.res.Documents = append(g.res.Documents, raw)
+	}
+
+	g.res.RowCount = len(g.res.Rows)
+	g.res.Truncated = g.res.Truncated || res.Truncated
+	if g.search != nil {
+		g.search.matches = g.searchRows(g.search.re, g.search.col)
+		g.search.cur = -1
+		g.search.center = false
+	}
+}
+
+// move shifts the cursor. width is the cell budget of the RESULT pane; the
+// horizontal window follows the cursor only at its edges, so the highlight
+// travels across the visible columns like a spreadsheet cursor.
+func (g *grid) move(dRow, dCol, width int) {
 	if g.empty() {
 		return
 	}
@@ -91,11 +168,13 @@ func (g *grid) move(dRow, dCol, visibleRows, width int) {
 }
 
 // scrollColIntoView keeps the cursor column inside the horizontal window by
-// moving the left column offset. width is the cell budget of the RESULT pane.
+// moving the left column offset. width is the cell budget of the RESULT pane,
+// including the two-cell row marker rendered in front of every row.
 func (g *grid) scrollColIntoView(width int) {
 	if len(g.widths) == 0 {
 		return
 	}
+	budget := maxInt(1, width-2)
 	if g.colOff < 0 {
 		g.colOff = 0
 	}
@@ -105,7 +184,7 @@ func (g *grid) scrollColIntoView(width int) {
 	if g.colOff < 0 {
 		g.colOff = 0
 	}
-	for g.colOff < len(g.widths)-1 && g.curCol >= g.columnEnd(g.colOff, width) {
+	for g.colOff < len(g.widths)-1 && g.curCol >= g.columnEnd(g.colOff, budget) {
 		g.colOff++
 	}
 }
@@ -266,7 +345,7 @@ func (g *grid) lines(width, height int) []string {
 	}
 
 	if g.search != nil && g.search.center {
-		g.scrollColIntoView(width - 2)
+		g.scrollColIntoView(width)
 	}
 	from, to := g.visibleColumns(width - 2)
 	total := 0

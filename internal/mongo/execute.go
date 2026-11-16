@@ -22,28 +22,44 @@ import (
 // as engine.Result with Error set; transport and programming errors are Go
 // errors; transport errors are returned separately.
 func (s *Session) ExecuteSpec(ctx context.Context, spec query.Spec) (engine.Result, error) {
-	if s.readOnly && spec.IsWrite() {
-		return engine.Result{}, fmt.Errorf("mongo: read-only session rejects %s", spec.Op)
-	}
-
 	s.reqMu.Lock()
 	defer s.reqMu.Unlock()
+
+	// A new request replaces whatever the grid was paging through.
+	s.closePageLocked()
+	return s.executeLocked(ctx, spec)
+}
+
+// executeLocked is ExecuteSpec with reqMu already held.
+func (s *Session) executeLocked(ctx context.Context, spec query.Spec) (engine.Result, error) {
+	opCtx, comment, txState, err := s.prepare(ctx, spec)
+	if err != nil {
+		return engine.Result{}, err
+	}
+	defer s.setComment("")
+
+	res, err := s.dispatch(opCtx, spec, comment)
+	return s.finish(res, err, txState, spec)
+}
+
+// prepare applies the read-only, transaction and session guards shared by the
+// normal and paged execution paths. The caller must clear the comment.
+func (s *Session) prepare(ctx context.Context, spec query.Spec) (context.Context, string, engine.TxState, error) {
+	if s.readOnly && spec.IsWrite() {
+		return nil, "", "", fmt.Errorf("mongo: read-only session rejects %s", spec.Op)
+	}
 
 	txState := s.TxState(ctx)
 	switch txState {
 	case engine.TxAborted:
 		if spec.Op != query.AbortTransaction {
-			return engine.Result{}, errors.New("mongo: transaction is aborted; run abortTransaction first")
+			return nil, "", "", errors.New("mongo: transaction is aborted; run abortTransaction first")
 		}
 	case engine.TxIdle:
 		if spec.Op == query.CommitTransaction || spec.Op == query.AbortTransaction {
-			return engine.Result{}, errors.New("mongo: no transaction in progress")
+			return nil, "", "", errors.New("mongo: no transaction in progress")
 		}
 	}
-
-	comment := newComment()
-	s.setComment(comment)
-	defer s.setComment("")
 
 	opCtx := ctx
 	if txState == engine.TxInTransaction && !isTransactionOp(spec.Op) {
@@ -55,7 +71,13 @@ func (s *Session) ExecuteSpec(ctx context.Context, spec query.Spec) (engine.Resu
 		}
 	}
 
-	res, err := s.dispatch(opCtx, spec, comment)
+	comment := newComment()
+	s.setComment(comment)
+	return opCtx, comment, txState, nil
+}
+
+// finish maps driver errors to results and keeps the transaction state honest.
+func (s *Session) finish(res engine.Result, err error, txState engine.TxState, spec query.Spec) (engine.Result, error) {
 	if err != nil {
 		if isCancelled(err) {
 			return engine.Result{
@@ -103,30 +125,8 @@ func (s *Session) dispatch(ctx context.Context, spec query.Spec, comment string)
 	}
 
 	switch spec.Op {
-	case query.Find:
-		opts := options.Find().
-			SetComment(comment).
-			SetLimit(spec.Limit).
-			SetSkip(spec.Skip)
-		if len(spec.Projection) > 0 {
-			opts.SetProjection(spec.Projection)
-		}
-		if len(spec.Sort) > 0 {
-			opts.SetSort(spec.Sort)
-		}
-		cur, err := coll.Find(ctx, filter, opts)
-		if err != nil {
-			return engine.Result{}, err
-		}
-		return s.collectCursor(ctx, cur)
-
-	case query.Aggregate:
-		pipeline, err := toPipeline(spec.Pipeline)
-		if err != nil {
-			return engine.Result{}, err
-		}
-		opts := options.Aggregate().SetComment(comment).SetAllowDiskUse(spec.AllowDiskUse)
-		cur, err := coll.Aggregate(ctx, pipeline, opts)
+	case query.Find, query.Aggregate:
+		cur, err := s.openCursor(ctx, spec, comment)
 		if err != nil {
 			return engine.Result{}, err
 		}
@@ -280,6 +280,43 @@ func (s *Session) dispatch(ctx context.Context, spec query.Spec, comment string)
 	}
 
 	return engine.Result{}, fmt.Errorf("mongo: unsupported op %q", spec.Op)
+}
+
+// openCursor starts the server cursor behind find and aggregate, shared by the
+// one-shot collect and the paged reader.
+func (s *Session) openCursor(ctx context.Context, spec query.Spec, comment string) (*mg.Cursor, error) {
+	dbName := spec.Database
+	if dbName == "" {
+		dbName = s.currentDatabase()
+	}
+	coll := s.client.Database(dbName).Collection(spec.Collection)
+
+	switch spec.Op {
+	case query.Find:
+		filter := spec.Filter
+		if filter == nil {
+			filter = bson.D{}
+		}
+		opts := options.Find().
+			SetComment(comment).
+			SetLimit(spec.Limit).
+			SetSkip(spec.Skip)
+		if len(spec.Projection) > 0 {
+			opts.SetProjection(spec.Projection)
+		}
+		if len(spec.Sort) > 0 {
+			opts.SetSort(spec.Sort)
+		}
+		return coll.Find(ctx, filter, opts)
+	case query.Aggregate:
+		pipeline, err := toPipeline(spec.Pipeline)
+		if err != nil {
+			return nil, err
+		}
+		opts := options.Aggregate().SetComment(comment).SetAllowDiskUse(spec.AllowDiskUse)
+		return coll.Aggregate(ctx, pipeline, opts)
+	}
+	return nil, fmt.Errorf("mongo: %s does not return a cursor", spec.Op)
 }
 
 func (s *Session) collectCursor(ctx context.Context, cur *mg.Cursor) (engine.Result, error) {

@@ -94,6 +94,18 @@ type Queryer interface {
 	Execute(ctx context.Context, request string) (Result, error)
 }
 
+// Pager is an optional session capability: a read query can keep its server
+// cursor open, so the UI fetches further rows without re-running the query.
+// Totals are capped by the session's result limits, not per page.
+type Pager interface {
+	// RunPaged executes the request and returns at most pageSize rows.
+	// hasMore reports whether the cursor may still hold rows.
+	RunPaged(ctx context.Context, request string, pageSize int) (res Result, hasMore bool, err error)
+	// FetchPage reads the next page; all reads until the cursor or the result
+	// limits are exhausted. The returned Result carries only the new rows.
+	FetchPage(ctx context.Context, all bool) (res Result, hasMore bool, err error)
+}
+
 // IndexInfo is one index of a MongoDB collection.
 type IndexInfo struct {
 	Name   string

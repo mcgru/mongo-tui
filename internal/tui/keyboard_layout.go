@@ -72,21 +72,32 @@ func detectKeyboardLayout() string {
 	return layoutUS
 }
 
-// normalizeCommandKey maps a command key from the active layout to the US
-// binding. Multi-rune names (ctrl+j, tab, esc, f1) and unknown runes pass
+// normalizeCommandKey maps a Cyrillic command key to the US key on the same
+// physical position. Cyrillic runes are mapped whatever the stored layout says:
+// the locale can be en_US while the user still types Russian, and text widgets
+// always receive the raw rune anyway. The ASCII punctuation aliases of the
+// Russian layout apply only when the layout is ru, because otherwise they would
+// steal ordinary "." and ",". Multi-rune names (ctrl+j, tab, esc, f1) pass
 // through untouched.
 func normalizeCommandKey(layout, raw string) string {
-	if layout != layoutRU {
-		return raw
-	}
 	runes := []rune(raw)
 	if len(runes) != 1 {
 		return raw
 	}
-	if mapped, ok := ruToUS[runes[0]]; ok {
+	r := runes[0]
+	if !isCyrillic(r) && layout != layoutRU {
+		return raw
+	}
+	if mapped, ok := ruToUS[r]; ok {
 		return mapped
 	}
 	return raw
+}
+
+// isCyrillic reports whether the rune belongs to the Cyrillic script; the
+// Russian layout's letters all do.
+func isCyrillic(r rune) bool {
+	return r >= '\u0400' && r <= '\u04FF'
 }
 
 // commandKey is what the keymap and the fixed context keys are matched

@@ -114,11 +114,11 @@ func TestMongoGridSentinelsAndTypes(t *testing.T) {
 	if got := g.currentRowTSV(); got != "1\t\t" {
 		t.Fatalf("TSV = %q, want null as an empty field", got)
 	}
-	g.move(1, 1, 6, 3)
+	g.move(1, 1, 80)
 	if got := g.currentCell(); got != "" {
 		t.Fatalf("missing cell = %q, want empty", got)
 	}
-	g.move(1, -1, 6, 3)
+	g.move(1, -1, 80)
 	if got := g.currentRowTSV(); got != "2\t\t" {
 		t.Fatalf("missing row TSV = %q, want empty fields for null/missing", got)
 	}
