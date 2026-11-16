@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -443,17 +444,23 @@ func (m Model) mongoCardLines(width, height int) []string {
 	headline := card.Database + "." + card.Collection + "  " + card.Type
 	lines := []string{titleStyle.Render(headline), ""}
 
-	lines = append(lines, dimStyle.Render(fmt.Sprintf("FIELDS (sample %d docs)", card.SampleSize)))
+	// Stats first: the document count and size are what the collection is
+	// usually opened for.
+	lines = append(lines, dimStyle.Render("STATS"))
+	if card.StatsError != "" {
+		lines = append(lines, "  "+errorStyle.Render(card.StatsError))
+	} else {
+		lines = append(lines, fmt.Sprintf("  %d documents, %s", card.Count, formatBytes(card.SizeBytes)))
+	}
+
+	lines = append(lines, "", dimStyle.Render(fmt.Sprintf("FIELDS (sample %d docs)", card.SampleSize)))
 	switch {
 	case card.FieldsError != "":
 		lines = append(lines, "  "+errorStyle.Render(card.FieldsError))
 	case len(card.Fields) == 0:
 		lines = append(lines, dimStyle.Render("  no documents sampled"))
 	default:
-		for _, field := range card.Fields {
-			line := fmt.Sprintf("  %-24s %-10s %d/%d", field.Name, field.Types, field.Present, field.Total)
-			lines = append(lines, line)
-		}
+		lines = append(lines, renderCardFields(card.Fields, width)...)
 	}
 
 	lines = append(lines, "", dimStyle.Render("INDEXES"))
@@ -466,13 +473,6 @@ func (m Model) mongoCardLines(width, height int) []string {
 			flags = " unique"
 		}
 		lines = append(lines, "  "+index.Name+flags+dimStyle.Render("  "+index.Keys))
-	}
-
-	lines = append(lines, "", dimStyle.Render("STATS"))
-	if card.StatsError != "" {
-		lines = append(lines, "  "+errorStyle.Render(card.StatsError))
-	} else {
-		lines = append(lines, fmt.Sprintf("  %d documents, %s", card.Count, formatBytes(card.SizeBytes)))
 	}
 
 	lines = append(lines, "", dimStyle.Render("OPTIONS"))
@@ -488,6 +488,66 @@ func (m Model) mongoCardLines(width, height int) []string {
 	}
 
 	return window(lines, m.cardOff, m.colOff, height, width)
+}
+
+// renderCardFields lays the sampled fields out in as many columns as the card
+// width allows, separated by a dim vertical rule. A narrow card keeps one field
+// per line.
+func renderCardFields(fields []engine.FieldInfo, width int) []string {
+	if len(fields) == 0 {
+		return nil
+	}
+	nameW, typeW, countW := 1, 1, 1
+	for _, field := range fields {
+		nameW = maxInt(nameW, displayWidth(field.Name))
+		typeW = maxInt(typeW, displayWidth(field.Types))
+		if n := len(strconv.Itoa(field.Present)); n > countW {
+			countW = n
+		}
+		if n := len(strconv.Itoa(field.Total)); n > countW {
+			countW = n
+		}
+	}
+
+	const prefix = 2
+	const sepW = 3 // " │ "
+	cellW := nameW + 1 + typeW + 1 + countW + 1 + countW
+	cols := 1
+	if width > prefix+cellW {
+		cols = (width - prefix + sepW) / (cellW + sepW)
+	}
+	if cols < 2 {
+		lines := make([]string, 0, len(fields))
+		for _, field := range fields {
+			lines = append(lines, fmt.Sprintf("  %-24s %-10s %d/%d", field.Name, field.Types, field.Present, field.Total))
+		}
+		return lines
+	}
+
+	sep := dimStyle.Render("│")
+	lines := make([]string, 0, (len(fields)+cols-1)/cols)
+	for start := 0; start < len(fields); start += cols {
+		end := start + cols
+		if end > len(fields) {
+			end = len(fields)
+		}
+		cells := make([]string, 0, end-start)
+		for _, field := range fields[start:end] {
+			counts := fmt.Sprintf("%*d/%*d", countW, field.Present, countW, field.Total)
+			cells = append(cells, padDisplay(field.Name, nameW)+" "+padDisplay(field.Types, typeW)+" "+counts)
+		}
+		line := "  " + strings.Join(cells, " "+sep+" ")
+		lines = append(lines, strings.TrimRight(line, " "))
+	}
+	return lines
+}
+
+// padDisplay pads text with spaces up to a terminal-cell width.
+func padDisplay(text string, width int) string {
+	if w := displayWidth(text); w < width {
+		return text + strings.Repeat(" ", width-w)
+	}
+	return text
 }
 
 func prettyJSONLines(text string) []string {

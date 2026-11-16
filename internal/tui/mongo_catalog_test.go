@@ -212,6 +212,47 @@ func TestMongoCollectionCard(t *testing.T) {
 			t.Fatalf("card does not contain %q:\n%s", want, lines)
 		}
 	}
+	if stats, fields := strings.Index(lines, "STATS"), strings.Index(lines, "FIELDS"); stats < 0 || stats > fields {
+		t.Fatalf("STATS must come before FIELDS:\n%s", lines)
+	}
+}
+
+func TestMongoCollectionCardFieldsInColumns(t *testing.T) {
+	m := mongoModel(t, &fakeSession{info: engine.Info{Database: "app"}})
+	m.mongoCard = &engine.CollectionCard{
+		Database:   "app",
+		Collection: "items",
+		Type:       "collection",
+		Exists:     true,
+		Fields: []engine.FieldInfo{
+			{Name: "alpha", Types: "string", Present: 1, Total: 1},
+			{Name: "beta", Types: "int", Present: 1, Total: 1},
+			{Name: "gamma", Types: "date", Present: 1, Total: 1},
+			{Name: "delta", Types: "bool", Present: 1, Total: 1},
+		},
+		Count:      1,
+		SampleSize: 1,
+	}
+
+	wide := strings.Join(m.cardLines(120, 40), "\n")
+	if !strings.Contains(wide, "│") {
+		t.Fatalf("wide card has no column separator:\n%s", wide)
+	}
+	row := ""
+	for _, line := range strings.Split(wide, "\n") {
+		if strings.Contains(line, "alpha") && strings.Contains(line, "beta") {
+			row = line
+			break
+		}
+	}
+	if row == "" {
+		t.Fatalf("wide card does not place alpha and beta in one row:\n%s", wide)
+	}
+
+	narrow := strings.Join(m.cardLines(30, 40), "\n")
+	if strings.Contains(narrow, "│") {
+		t.Fatalf("narrow card should keep one field per line:\n%s", narrow)
+	}
 }
 
 func TestMongoEnterOnCollectionOpensCard(t *testing.T) {

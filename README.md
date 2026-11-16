@@ -97,9 +97,11 @@ incomplete envelope or MQL command never reaches the server.
 
 The tree lists databases, collections, views, indexes, users and roles.
 `Enter` on a database switches the session to it; `Enter` on a collection opens
-a card with sampled fields, indexes, statistics, options and the JSON Schema
-validator. `F5` reloads a branch. The current database is marked in the tree
-and in the header. A write that creates or removes a collection (insert, upsert,
+a card with statistics first (document count and size), then sampled fields,
+indexes, options and the JSON Schema validator. Fields use two or more columns
+when the card is wide enough, separated by a dim vertical rule; a narrow card
+keeps one field per line. `F5` reloads a branch. The current database is marked
+in the tree and in the header. A write that creates or removes a collection (insert, upsert,
 createCollection, drop, rename) reloads that database's Collections folder
 automatically, so the change shows without a reload or re-login. The database you
 are connected to is always navigable in the tree, even when it is empty (not in
