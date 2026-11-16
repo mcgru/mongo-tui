@@ -77,9 +77,20 @@ func detectKeyboardLayout() string {
 // the locale can be en_US while the user still types Russian, and text widgets
 // always receive the raw rune anyway. The ASCII punctuation aliases of the
 // Russian layout apply only when the layout is ru, because otherwise they would
-// steal ordinary "." and ",". Multi-rune names (ctrl+j, tab, esc, f1) pass
-// through untouched.
+// steal ordinary "." and ",". Control names with a Cyrillic letter are mapped
+// too, so ctrl+а reaches ctrl+f on terminals that report the rune rather than
+// the control byte; other multi-rune names (ctrl+j, tab, esc, f1) stay as is.
 func normalizeCommandKey(layout, raw string) string {
+	if prefix, rest, ok := splitControlPrefix(raw); ok {
+		runes := []rune(rest)
+		if len(runes) == 1 && isCyrillic(runes[0]) {
+			if mapped, ok := ruToUS[runes[0]]; ok && len(mapped) == 1 && isASCIILetter(rune(mapped[0])) {
+				return prefix + strings.ToLower(mapped)
+			}
+		}
+		return raw
+	}
+
 	runes := []rune(raw)
 	if len(runes) != 1 {
 		return raw
@@ -92,6 +103,17 @@ func normalizeCommandKey(layout, raw string) string {
 		return mapped
 	}
 	return raw
+}
+
+// splitControlPrefix separates a control-key name from its key, longest prefix
+// first so ctrl+alt+f is not read as ctrl+ with "alt+f" left in the key.
+func splitControlPrefix(raw string) (prefix, rest string, ok bool) {
+	for _, candidate := range []string{"ctrl+shift+", "ctrl+alt+", "ctrl+"} {
+		if strings.HasPrefix(raw, candidate) {
+			return candidate, raw[len(candidate):], true
+		}
+	}
+	return "", "", false
 }
 
 // isCyrillic reports whether the rune belongs to the Cyrillic script; the

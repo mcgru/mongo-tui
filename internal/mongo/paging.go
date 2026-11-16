@@ -21,16 +21,18 @@ const DefaultPageSize = 30
 // apply to the whole page sequence, so "load all" cannot grow past maxDocs or
 // maxBytes no matter how often more is pressed.
 type pageState struct {
-	cur       *mg.Cursor
-	pageSize  int
-	all       bool
-	limit     int64 // the query's own limit, 0 means unbounded
-	fetched   int
-	bytes     int64
-	maxDocs   int
-	maxBytes  int
-	more      bool
-	truncated bool
+	cur        *mg.Cursor
+	pageSize   int
+	all        bool
+	limit      int64 // the query's own limit, 0 means unbounded
+	fetched    int
+	bytes      int64
+	maxDocs    int
+	maxBytes   int
+	database   string
+	collection string
+	more       bool
+	truncated  bool
 }
 
 // RunPaged executes a read query and returns only its first page, keeping the
@@ -65,12 +67,15 @@ func (s *Session) RunPaged(ctx context.Context, request string, pageSize int) (e
 		res, ferr := s.finish(engine.Result{}, err, txState, spec)
 		return res, false, ferr
 	}
+	dbName, collection := s.specSource(spec)
 	page := &pageState{
-		cur:      cur,
-		pageSize: pageSize,
-		limit:    spec.Limit,
-		maxDocs:  s.maxDocs,
-		maxBytes: s.maxBytes,
+		cur:        cur,
+		pageSize:   pageSize,
+		limit:      spec.Limit,
+		maxDocs:    s.maxDocs,
+		maxBytes:   s.maxBytes,
+		database:   dbName,
+		collection: collection,
 	}
 	s.page = page
 	res, err := s.readPageLocked(opCtx, page)
@@ -170,6 +175,8 @@ func (s *Session) readPageLocked(ctx context.Context, page *pageState) (engine.R
 	}
 
 	res := g.result()
+	res.Database = page.database
+	res.Collection = page.collection
 	res.Truncated = page.truncated
 	return res, nil
 }

@@ -131,14 +131,23 @@ The footer shows the pattern as in less; `Enter` jumps to the first match on or
 below the current row and centres it, matching cells are highlighted, `n`/`N`
 jump to the next/previous match (wrapping), and `Esc` clears the search. The
 pattern is a Go regexp; `q` is an ordinary character in it, so it does not leave
-the search. `i` switches future searches between case-sensitive and ignore-case
-(less's `-i`); Ctrl+I cannot be bound because terminals send it as Tab.
+the search. Searches are ignore-case at startup (like `less -i`); `i` switches
+future searches to case-sensitive and back. Ctrl+I cannot be bound because
+terminals send it as Tab.
 
 Paging keeps the server cursor open instead of loading a whole collection. Peek
 shows the first 30 rows; `m` appends the next page, and `A` drains the cursor up
 to `result_limit_rows` and `result_limit_bytes`, stopping with a truncated
 status instead of growing without bound. The search covers the rows loaded so
 far; a new query or a database switch closes the cursor.
+
+`Ctrl+F` on a RESULT cell turns it into a server filter: the editor is cleared
+and gets `db.<collection>.find({ field: value })` for the collection the result
+came from, with the value as a typed literal (`ObjectId`, `ISODate`, numbers,
+`NumberLong`, `NumberDecimal`, strings, `null`). `Ctrl+Alt+F` wraps the visible
+text in an escaped regexp instead. The cursor lands right after the value, and
+nothing runs until `Ctrl+J`. A result from another database asks to switch
+first; missing values become an empty string to type into.
 
 `Enter` (or `→`) on a **Users** row opens a focused role-editor window over the
 panes. It lists the databases the session can see, the databases where the user
@@ -194,6 +203,8 @@ the state file.
 - `c` copies the cell, `C` copies the row as TSV through OSC 52.
 - In RESULT `m` appends the next page of a peeked query, `A` loads it up to the
   result limits; `/` searches the loaded rows, `n`/`N` walk the matches.
+- `Ctrl+F` inserts a find filter for the cursor cell, `Ctrl+Alt+F` a regexp;
+  both clear the editor and leave the query ready to run with `Ctrl+J`.
 - `/`, `p`, `+`, `-`, `=` insert MongoDB templates (in RESULT, `/` searches the
   current column); `.` inserts a name.
 - `Ctrl+Q` quits; `Ctrl+C` cancels a running request, then quits.

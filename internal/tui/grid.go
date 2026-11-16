@@ -335,6 +335,39 @@ func (g *grid) currentCell() string {
 	return row[g.curCol]
 }
 
+// currentColumn reports the column under the cursor and its engine type.
+func (g *grid) currentColumn() (name, typ string, ok bool) {
+	if g.empty() || g.curCol < 0 || g.curCol >= len(g.res.Columns) {
+		return "", "", false
+	}
+	typ = ""
+	if g.curCol < len(g.res.ColumnTypes) {
+		typ = g.res.ColumnTypes[g.curCol]
+	}
+	return g.res.Columns[g.curCol], typ, true
+}
+
+// currentCellText is the visible text of the cursor cell, with NULL and
+// MISSING kept as sentinels so a filter can tell them apart.
+func (g *grid) currentCellText() (string, bool) {
+	if g.empty() || g.curRow < 0 || g.curRow >= len(g.res.Rows) {
+		return "", false
+	}
+	row := g.res.Rows[g.curRow]
+	if g.curCol < 0 || g.curCol >= len(row) {
+		return engine.MissingSentinel, true
+	}
+	return row[g.curCol], true
+}
+
+// currentDocument is the full EJSON of the cursor row, when the adapter kept it.
+func (g *grid) currentDocument() []byte {
+	if g.empty() || g.curRow < 0 || g.curRow >= len(g.res.Documents) {
+		return nil
+	}
+	return g.res.Documents[g.curRow]
+}
+
 // lines renders the grid into at most height lines and width columns.
 func (g *grid) lines(width, height int) []string {
 	if g.empty() {

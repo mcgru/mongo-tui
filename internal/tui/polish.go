@@ -184,6 +184,8 @@ var helpActions = []struct {
 	{config.ActionCopyRow, "copy the whole row as TSV"},
 	{config.ActionLoadMore, "RESULT: append the next page of a peeked query"},
 	{config.ActionLoadAll, "RESULT: load a peeked query up to the row/byte limits"},
+	{config.ActionServerSearch, "RESULT: find documents by the cursor cell value"},
+	{config.ActionServerSearchRegex, "RESULT: regexp find by the cursor cell value"},
 	{config.ActionKeyboardLayout, "toggle the command-key layout: us / ru"},
 	{config.ActionSelectTemplate, "collection/view: find template; RESULT grid: regexp search"},
 	{config.ActionPeek, "collection or view: run a paged find, 30 rows first (p or the key above Enter)"},
@@ -234,14 +236,22 @@ Roles outside that model stay under OTHER ROLES and are sent back untouched.
 
 In the RESULT grid the select key starts a regexp search in the column under the
 cursor: Enter applies it, n / N jump to the next / previous match (wrapping),
-and Esc clears the highlight. The i key toggles case sensitivity for future
-searches; Ctrl+I cannot be used because terminals send it as Tab. q is an
-ordinary character in the pattern, so it does not leave the search.
+and Esc clears the highlight. Searches are ignore-case at startup (like less
+-i); the i key toggles case sensitivity for future searches. Ctrl+I cannot be
+used because terminals send it as Tab. q is an ordinary character in the
+pattern, so it does not leave the search.
 
 Peek shows the first 30 rows and keeps the server cursor open: the more key
 appends the next page, the all key drains the cursor up to result_limit_rows
 and result_limit_bytes. The search covers the rows loaded so far. A new query
 or a database switch closes the cursor.
+
+The server-filter keys turn the cell under the cursor into a find for the same
+collection: the exact key inserts the value as a typed literal, the regexp key
+wraps the visible text in an escaped regexp. The editor is cleared, the value
+is inserted, and the cursor lands right after it. Null becomes null; a missing
+field leaves an empty string to type into. The filter runs in the current
+database, so a result from another database asks to switch first.
 
 Cyrillic command keys always act as the US key on the same physical position
 (з is p, т is n, ь is m, Ф is A, х is [), even when the stored layout is us or

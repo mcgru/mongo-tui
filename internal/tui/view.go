@@ -657,7 +657,8 @@ func (m Model) footerKeys() string {
 					if m.searchIgnoreCase {
 						caseHint = "i ignore-case"
 					}
-					hint += "  " + key(config.ActionSelectTemplate) + " search  " + caseHint
+					hint += "  " + key(config.ActionSelectTemplate) + " search  " + caseHint +
+						"  " + key(config.ActionServerSearch) + " filter"
 					if m.pageMore {
 						hint += "  " + key(config.ActionLoadMore) + " more  " +
 							key(config.ActionLoadAll) + " all"

@@ -20,6 +20,11 @@ type Result struct {
 	// or "mixed" when documents disagree; empty when the engine has no types.
 	ColumnTypes []string
 	Rows        [][]string
+	// Database and Collection name where the rows came from, when the engine
+	// can tell. The UI uses them to build a follow-up query against the same
+	// collection instead of guessing from the current tree selection.
+	Database   string
+	Collection string
 	// Documents holds the full record for each row when the engine can provide
 	// it (MongoDB EJSON), so the UI can show it without re-reading the source.
 	Documents [][]byte

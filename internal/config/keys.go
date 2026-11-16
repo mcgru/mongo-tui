@@ -39,6 +39,10 @@ const (
 	ActionLoadMore Action = "load_more"
 	ActionLoadAll  Action = "load_all"
 
+	// Server-side filters built from the cursor cell: exact value and regexp.
+	ActionServerSearch      Action = "server_search"
+	ActionServerSearchRegex Action = "server_search_regex"
+
 	// Tree actions. They carry the same meaning as in less: / searches an
 	// object, * edits it.
 	ActionSelectTemplate Action = "select_template"
@@ -79,6 +83,10 @@ var defaultKeys = map[Action]string{
 	ActionKeyboardLayout:  "ctrl+l",
 	ActionLoadMore:        "m",
 	ActionLoadAll:         "A",
+	ActionServerSearch:    "ctrl+f",
+	// Ctrl+Shift+F is a desktop shortcut on MATE, so the regexp variant uses
+	// Ctrl+Alt+F. The uppercase alias covers terminals that report the rune.
+	ActionServerSearchRegex: "ctrl+alt+f,ctrl+alt+F",
 
 	// / searches like less does: it turns the object into a SELECT.
 	ActionSelectTemplate: "/",

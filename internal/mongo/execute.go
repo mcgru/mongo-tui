@@ -39,7 +39,22 @@ func (s *Session) executeLocked(ctx context.Context, spec query.Spec) (engine.Re
 	defer s.setComment("")
 
 	res, err := s.dispatch(opCtx, spec, comment)
-	return s.finish(res, err, txState, spec)
+	res, err = s.finish(res, err, txState, spec)
+	if err == nil {
+		res.Database, res.Collection = s.specSource(spec)
+	}
+	return res, err
+}
+
+// specSource resolves the database and collection a result came from. MQL has
+// no database qualifier, so the UI needs the exact source to build follow-up
+// queries.
+func (s *Session) specSource(spec query.Spec) (string, string) {
+	dbName := spec.Database
+	if dbName == "" {
+		dbName = s.currentDatabase()
+	}
+	return dbName, spec.Collection
 }
 
 // prepare applies the read-only, transaction and session guards shared by the

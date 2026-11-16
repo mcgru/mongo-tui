@@ -231,3 +231,88 @@ func TestMongoLiveCompletion(t *testing.T) {
 		t.Fatalf("fields = %+v, want name", m.comp.items)
 	}
 }
+
+// TestLiveServerFilterFromCell builds the Ctrl+F filter for a real grid cell
+// and runs it: the generated find must return that same document.
+func TestLiveServerFilterFromCell(t *testing.T) {
+	uri := os.Getenv("MONGODB_URI")
+	if uri == "" {
+		t.Skip("MONGODB_URI is not set")
+	}
+	opts := testOptions()
+	opts.CLI.MongoURI = uri
+	m := New(opts)
+	connected, ok := m.connectCmd("")().(connectedMsg)
+	if !ok {
+		t.Fatal("connect did not return connectedMsg")
+	}
+	updated, _ := m.Update(connected)
+	m = updated.(Model)
+
+	ctx := context.Background()
+	database := m.currentDatabase()
+	collection := fmt.Sprintf("___mongo_tui_filter_%d", time.Now().UnixNano())
+	envelope := fmt.Sprintf(
+		`{"database":%q,"op":"insertMany","collection":%q,"documents":[{"_id":1,"name":"Ann","qty":3},{"_id":2,"name":"Bob","qty":7}]}`,
+		database, collection)
+	if res, err := m.sess.Execute(ctx, envelope); err != nil || res.Error {
+		t.Fatalf("insert fixture: err=%v res=%+v", err, res)
+	}
+	t.Cleanup(func() {
+		_, _ = m.sess.Execute(context.Background(),
+			fmt.Sprintf(`{"database":%q,"op":"dropCollection","collection":%q}`, database, collection))
+	})
+
+	m.editor.SetValue(fmt.Sprintf("db.%s.find({})", collection))
+	m, cmd := press(t, m, tea.KeyCtrlJ)
+	if cmd == nil {
+		t.Fatal("find returned no command")
+	}
+	execMsg := cmd().(execDoneMsg)
+	if execMsg.err != nil || execMsg.result.Error {
+		t.Fatalf("find failed: err=%v res=%+v", execMsg.err, execMsg.result)
+	}
+	updated, _ = m.Update(execMsg)
+	m = updated.(Model)
+	if m.grid == nil || len(m.grid.res.Rows) == 0 {
+		t.Fatalf("grid = %+v, want rows", m.grid)
+	}
+
+	nameCol := -1
+	for i, column := range m.grid.res.Columns {
+		if column == "name" {
+			nameCol = i
+			break
+		}
+	}
+	if nameCol < 0 {
+		t.Fatalf("columns = %v, want name", m.grid.res.Columns)
+	}
+	m.grid.curCol = nameCol
+	want := m.grid.currentCell()
+	m.focus = focusGrid
+	m.tab = tabResult
+
+	updated, _ = m.openServerFilter(false)
+	m = updated.(Model)
+	if !strings.Contains(m.editor.Value(), `find({ name: "`) {
+		t.Fatalf("editor = %q, want the generated name filter", m.editor.Value())
+	}
+
+	m, cmd = press(t, m, tea.KeyCtrlJ)
+	if cmd == nil {
+		t.Fatal("filter returned no command")
+	}
+	filterMsg := cmd().(execDoneMsg)
+	if filterMsg.err != nil || filterMsg.result.Error {
+		t.Fatalf("filter failed: err=%v res=%+v", filterMsg.err, filterMsg.result)
+	}
+	updated, _ = m.Update(filterMsg)
+	m = updated.(Model)
+	if m.grid == nil || len(m.grid.res.Rows) != 1 {
+		t.Fatalf("filtered rows = %+v, want exactly one", m.grid)
+	}
+	if got := m.grid.res.Rows[0][nameCol]; got != want {
+		t.Fatalf("filtered name = %q, want %q", got, want)
+	}
+}

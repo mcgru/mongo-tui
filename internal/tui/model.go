@@ -271,17 +271,18 @@ func New(opts Options) Model {
 	}
 
 	m := Model{
-		opts:           opts,
-		keys:           keys,
-		scr:            screenPicker,
-		spin:           sp,
-		editor:         editor,
-		focus:          focusEditor,
-		tx:             engine.TxIdle,
-		readOnly:       opts.Config.ReadOnly || opts.CLI.ReadOnly,
-		leftPct:        defaultLeftPct,
-		resultPct:      defaultResultPct,
-		keyboardLayout: resolveKeyboardLayout(opts.State.KeyboardLayout),
+		opts:             opts,
+		keys:             keys,
+		scr:              screenPicker,
+		spin:             sp,
+		editor:           editor,
+		focus:            focusEditor,
+		tx:               engine.TxIdle,
+		readOnly:         opts.Config.ReadOnly || opts.CLI.ReadOnly,
+		leftPct:          defaultLeftPct,
+		resultPct:        defaultResultPct,
+		keyboardLayout:   resolveKeyboardLayout(opts.State.KeyboardLayout),
+		searchIgnoreCase: true,
 	}
 	m.applyLayout(opts.State.Layout)
 
@@ -1003,6 +1004,10 @@ func (m Model) handleMainKey(msg tea.KeyMsg, key string) (tea.Model, tea.Cmd) {
 			return m.loadPage(false)
 		case m.tab == tabResult && m.keys.Is(config.ActionLoadAll, key):
 			return m.loadPage(true)
+		case m.tab == tabResult && m.keys.Is(config.ActionServerSearch, key):
+			return m.openServerFilter(false)
+		case m.tab == tabResult && m.keys.Is(config.ActionServerSearchRegex, key):
+			return m.openServerFilter(true)
 		case m.keys.Is(config.ActionSelectTemplate, key):
 			return m.openGridSearch()
 		case m.tab == tabResult && key == "n":

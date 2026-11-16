@@ -38,6 +38,18 @@ func TestNormalizeRussianCommandKeys(t *testing.T) {
 			t.Errorf("normalize(us, %q) = %q, want unchanged", raw, got)
 		}
 	}
+	// Control names may arrive with a Cyrillic letter on terminals that report
+	// the rune instead of the control byte: ctrl+а is the physical ctrl+f.
+	controls := map[string]string{
+		"ctrl+а": "ctrl+f", "ctrl+А": "ctrl+f",
+		"ctrl+ф": "ctrl+a", "ctrl+alt+а": "ctrl+alt+f",
+		"ctrl+j": "ctrl+j", "ctrl+shift+left": "ctrl+shift+left",
+	}
+	for raw, want := range controls {
+		if got := normalizeCommandKey(layoutUS, raw); got != want {
+			t.Errorf("normalize(us, %q) = %q, want %q", raw, got, want)
+		}
+	}
 }
 
 func TestDetectKeyboardLayoutFromLocale(t *testing.T) {
@@ -149,9 +161,9 @@ func TestCyrillicNextMatchAndCaseToggle(t *testing.T) {
 	if m.grid.curRow != 2 {
 		t.Fatalf("т row = %d, want 2", m.grid.curRow)
 	}
-	// ш is i: ignore case.
+	// ш is i: switch from the default ignore-case to case-sensitive.
 	m = typeInto(t, m, "ш")
-	if !m.searchIgnoreCase {
+	if m.searchIgnoreCase {
 		t.Fatal("ш did not toggle the search case")
 	}
 }
