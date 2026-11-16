@@ -118,8 +118,8 @@ and validator properties, and shows the collection stats. Fields are a sample,
 not a schema.
 
 `Ctrl+Space` completes databases, collections, methods, fields, query/update
-operators, aggregation stages and JSON values. `/` inserts a find, `p` runs a
-limited find, `+` on a database or its **Collections** folder inserts a ready
+operators, aggregation stages and JSON values. `/` inserts a find, `p` (or the
+key above Enter) runs a limited find, `+` on a database or its **Collections** folder inserts a ready
 new-document `insertOne` (which creates the collection on the first write,
 `createdAt` filled, cursor on the name), `+` on a collection inserts
 `createIndex`, `+` on the **Users** folder imports a user (the same as `i`), `-`
@@ -131,7 +131,8 @@ The footer shows the pattern as in less; `Enter` jumps to the first match on or
 below the current row and centres it, matching cells are highlighted, `n`/`N`
 jump to the next/previous match (wrapping), and `Esc` clears the search. The
 pattern is a Go regexp; `q` is an ordinary character in it, so it does not leave
-the search.
+the search. `i` switches future searches between case-sensitive and ignore-case
+(less's `-i`); Ctrl+I cannot be bound because terminals send it as Tab.
 
 `Enter` (or `→`) on a **Users** row opens a focused role-editor window over the
 panes. It lists the databases the session can see, the databases where the user
@@ -177,6 +178,11 @@ the state file.
 - `Ctrl+←/→` resize the tree; `Ctrl+↑/↓` move the result/editor divider. Sizes
   are remembered in `state.json` — per saved profile, with a global fallback for
   ad-hoc URIs.
+- Command keys understand the Russian layout: with `keyboard_layout = "ru"` the
+  Cyrillic key on the same physical position acts as its US key (`з` is `p`,
+  `т` is `n`, `х` is `[`, `.` is `/`), while text fields still type Cyrillic.
+  `Ctrl+L` toggles us/ru and saves it for the profile or globally; without a
+  stored value the layout is detected from `LC_ALL`/`LC_CTYPE`/`LANG`.
 - `c` copies the cell, `C` copies the row as TSV through OSC 52.
 - `/`, `p`, `+`, `-`, `=` insert MongoDB templates (in RESULT, `/` searches the
   current column); `.` inserts a name.
@@ -200,9 +206,9 @@ bindings.
 ## Configuration and migration
 
 Config lives in `$XDG_CONFIG_HOME/mongo-tui/config.toml` (usually
-`~/.config/mongo-tui/config.toml`). Profiles, connection history and pane sizes
-live in `$XDG_STATE_HOME/mongo-tui/state.json`; no password is ever written
-there.
+`~/.config/mongo-tui/config.toml`). Profiles, connection history, pane sizes and
+keyboard layout live in `$XDG_STATE_HOME/mongo-tui/state.json`; no password is
+ever written there.
 
 On the first start after the rename, the old `psql-tui` config and state are
 copied into the new locations. New files are never overwritten, the old files

@@ -35,7 +35,11 @@ type Profile struct {
 	// connect time, .pgpass-style, and never written to state.
 	SourceFile string `json:"source_file,omitempty"`
 	// Layout overrides the global pane sizes for this profile.
-	Layout          *Layout    `json:"layout,omitempty"`
+	Layout *Layout `json:"layout,omitempty"`
+	// KeyboardLayout is "us" or "ru"; empty means the global value. The
+	// terminal does not report the OS layout, so command keys are normalised
+	// from this setting.
+	KeyboardLayout  string     `json:"keyboard_layout,omitempty"`
 	Host            string     `json:"host,omitempty"`
 	Port            int        `json:"port,omitempty"`
 	Database        string     `json:"database,omitempty"`
@@ -56,6 +60,9 @@ type State struct {
 	// Layout is the default for sessions without a saved profile. A profile's
 	// own Layout wins when it has one.
 	Layout *Layout `json:"layout,omitempty"`
+	// KeyboardLayout is the default command-key layout: "us", "ru", or empty
+	// to detect from LC_ALL/LC_CTYPE/LANG.
+	KeyboardLayout string `json:"keyboard_layout,omitempty"`
 }
 
 // NewState returns an empty state at the current version.

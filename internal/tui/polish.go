@@ -182,8 +182,9 @@ var helpActions = []struct {
 	{config.ActionResultShorter, "shorter result pane"},
 	{config.ActionCopyCell, "copy the cell under the cursor"},
 	{config.ActionCopyRow, "copy the whole row as TSV"},
+	{config.ActionKeyboardLayout, "toggle the command-key layout: us / ru"},
 	{config.ActionSelectTemplate, "collection/view: find template; RESULT grid: regexp search"},
-	{config.ActionPeek, "collection or view: run a find limited to two result screens"},
+	{config.ActionPeek, "collection or view: run a limited find (p or the key above Enter)"},
 	{config.ActionInsertName, "insert the selected name where the editor cursor was left"},
 	{config.ActionCreateTemplate, "database or Collections: new document; collection: createIndex; Users: import user"},
 	{config.ActionDropTemplate, "drop the selected collection or index"},
@@ -231,8 +232,14 @@ Roles outside that model stay under OTHER ROLES and are sent back untouched.
 
 In the RESULT grid the select key starts a regexp search in the column under the
 cursor: Enter applies it, n / N jump to the next / previous match (wrapping),
-and Esc clears the highlight. q is an ordinary character in the pattern, so it
-does not leave the search.
+and Esc clears the highlight. The i key toggles case sensitivity for future
+searches; Ctrl+I cannot be used because terminals send it as Tab. q is an
+ordinary character in the pattern, so it does not leave the search.
+
+Command keys follow the keyboard layout stored in state: with layout ru the
+Cyrillic key on the same physical position acts as its US key (з is p, т is n,
+х is [, . is /), while text fields still type Cyrillic. Ctrl+L toggles us/ru
+and saves the choice; when no layout is stored, it is detected from the locale.
 
 The insert key pastes the selected name into the editor where its cursor was
 left and keeps the focus in the tree, adding a space after the name — so a
@@ -284,6 +291,7 @@ func (m *Model) saveProfile(label string) {
 		URI:             m.mongoURI,
 		ReadOnlyDefault: m.readOnly,
 		Layout:          &config.Layout{LeftPct: m.leftPct, ResultPct: m.resultPct},
+		KeyboardLayout:  m.keyboardLayout,
 	}
 	m.opts.State.Upsert(profile)
 	if err := m.opts.State.Save(m.opts.Paths.StateFile); err != nil {

@@ -595,7 +595,7 @@ func (m Model) messageLines(width, height int) []string {
 // follows the focus instead of listing every binding at once.
 func (m Model) footerLine() string {
 	if m.searchOpen {
-		hint := "   Enter search   Esc cancel"
+		hint := "   Enter search   Esc cancel   " + m.searchCaseLabel()
 		if m.searchErr != "" {
 			hint = "   " + m.searchErr
 		}
@@ -653,7 +653,11 @@ func (m Model) footerKeys() string {
 					if m.grid != nil && m.grid.search != nil {
 						hint += "  n/N match  Esc clear"
 					}
-					hint += "  " + key(config.ActionSelectTemplate) + " search"
+					caseHint := "i case"
+					if m.searchIgnoreCase {
+						caseHint = "i ignore-case"
+					}
+					hint += "  " + key(config.ActionSelectTemplate) + " search  " + caseHint
 				} else {
 					hint = "↑↓ scroll  ←→ sideways"
 				}

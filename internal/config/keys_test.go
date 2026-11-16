@@ -77,6 +77,20 @@ func TestAliasListIsParsedAndTrimmed(t *testing.T) {
 	}
 }
 
+func TestPeekHasBackslashAlias(t *testing.T) {
+	km := DefaultKeymap()
+	keys := km.Keys(ActionPeek)
+	if len(keys) != 2 || keys[0] != "p" || keys[1] != "\\" {
+		t.Fatalf("peek keys = %q, want p and backslash", keys)
+	}
+	if !km.Is(ActionPeek, "\\") {
+		t.Fatal("backslash does not trigger peek")
+	}
+	if got := km.Get(ActionPeek); got != "p" {
+		t.Fatalf("primary peek key = %q, want p", got)
+	}
+}
+
 func TestAliasCollisionIsAnError(t *testing.T) {
 	cfg := Default()
 	cfg.Keys = map[string]string{"insert_name": ".,/"}

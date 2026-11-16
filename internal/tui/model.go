@@ -209,12 +209,16 @@ type Model struct {
 	input     textinput.Model
 	// searchOpen shows the "/" prompt in the footer; searchInput edits the
 	// pattern and searchErr keeps a regexp error visible while typing.
-	searchOpen  bool
-	searchInput textinput.Model
-	searchErr   string
-	editor      editor
-	grid        *grid
-	tree        *tree
+	searchOpen       bool
+	searchInput      textinput.Model
+	searchErr        string
+	searchIgnoreCase bool
+	// keyboardLayout is "us" or "ru" for command-key matching; text widgets
+	// always receive the original rune.
+	keyboardLayout string
+	editor         editor
+	grid           *grid
+	tree           *tree
 	// mongoCard is the MongoDB collection card.
 	mongoCard *engine.CollectionCard
 	// roles is the modal role editor for one user; nil when it is closed.
@@ -252,16 +256,17 @@ func New(opts Options) Model {
 	}
 
 	m := Model{
-		opts:      opts,
-		keys:      keys,
-		scr:       screenPicker,
-		spin:      sp,
-		editor:    editor,
-		focus:     focusEditor,
-		tx:        engine.TxIdle,
-		readOnly:  opts.Config.ReadOnly || opts.CLI.ReadOnly,
-		leftPct:   defaultLeftPct,
-		resultPct: defaultResultPct,
+		opts:           opts,
+		keys:           keys,
+		scr:            screenPicker,
+		spin:           sp,
+		editor:         editor,
+		focus:          focusEditor,
+		tx:             engine.TxIdle,
+		readOnly:       opts.Config.ReadOnly || opts.CLI.ReadOnly,
+		leftPct:        defaultLeftPct,
+		resultPct:      defaultResultPct,
+		keyboardLayout: resolveKeyboardLayout(opts.State.KeyboardLayout),
 	}
 	m.applyLayout(opts.State.Layout)
 
@@ -354,6 +359,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.pendingWaiting = ""
 		m.pendingFinal = ""
 		m.applyLayout(m.layoutForProfile(msg.profileID))
+		m.keyboardLayout = m.keyboardLayoutForProfile(msg.profileID)
 		m.buildTree()
 		m.status = m.rememberConnection(msg)
 		m.editor.ClearMarks()
@@ -634,7 +640,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	key := msg.String()
+	// Command keys are matched after layout normalisation; text widgets below
+	// still receive the original msg.
+	key := m.commandKey(msg.String())
 
 	if m.keys.Is(config.ActionQuit, key) {
 		m.saveLayoutNow()
@@ -646,6 +654,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.saveLayoutNow()
 		return m, tea.Quit
+	}
+	if m.keys.Is(config.ActionKeyboardLayout, key) {
+		return m.toggleKeyboardLayout()
 	}
 
 	if m.confirmDelete != "" {
@@ -743,7 +754,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateInput(msg)
 
 	case screenMain:
-		return m.handleMainKey(msg)
+		return m.handleMainKey(msg, key)
 
 	case screenError:
 		switch key {
@@ -822,9 +833,7 @@ func (m Model) connectFromInput() (tea.Model, tea.Cmd) {
 	return m, tea.Batch(m.spin.Tick, m.connectCmd(""))
 }
 
-func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	key := msg.String()
-
+func (m Model) handleMainKey(msg tea.KeyMsg, key string) (tea.Model, tea.Cmd) {
 	// The role editor is modal: it owns every key while it is open.
 	if m.roles != nil {
 		return m.handleRoleEditorKey(key)
@@ -932,33 +941,35 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case focusTree:
-		return m.handleTreeKey(msg.String())
+		return m.handleTreeKey(key)
 	}
 
 	// In the result grid "/" starts a regexp search in the cursor column;
 	// n / N walk the matches and Esc clears the search.
 	if m.focus == focusGrid {
 		switch {
-		case m.keys.Is(config.ActionSelectTemplate, msg.String()):
+		case m.keys.Is(config.ActionSelectTemplate, key):
 			return m.openGridSearch()
-		case m.tab == tabResult && msg.String() == "n":
+		case m.tab == tabResult && key == "n":
 			return m.jumpGridSearch(true)
-		case m.tab == tabResult && msg.String() == "N":
+		case m.tab == tabResult && key == "N":
 			return m.jumpGridSearch(false)
+		case key == "i":
+			return m.toggleSearchCase()
 		}
 	}
-	if m.focus == focusGrid && msg.String() == "esc" && m.grid != nil && m.grid.search != nil {
+	if m.focus == focusGrid && key == "esc" && m.grid != nil && m.grid.search != nil {
 		return m.clearGridSearch()
 	}
 
-	if m.keys.Is(config.ActionCopyCell, msg.String()) {
+	if m.keys.Is(config.ActionCopyCell, key) {
 		return m.copyCurrent(false)
 	}
-	if m.keys.Is(config.ActionCopyRow, msg.String()) {
+	if m.keys.Is(config.ActionCopyRow, key) {
 		return m.copyCurrent(true)
 	}
 
-	switch msg.String() {
+	switch key {
 	case "up", "k":
 		m.scrollPane(-1)
 	case "down", "j":

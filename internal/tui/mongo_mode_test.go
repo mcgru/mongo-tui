@@ -145,6 +145,23 @@ func TestMongoCompletionMetadataAndTemplates(t *testing.T) {
 	}
 }
 
+func TestBackslashAliasPeeks(t *testing.T) {
+	fake := &fakeSession{info: engine.Info{ServerVersion: "8.0.38", Database: "app"}}
+	m := mongoModel(t, fake)
+	m.focus = focusTree
+	m.tree.visible = []*treeNode{{kind: nodeCollection, schema: "app", name: "items", openable: true}}
+	m.tree.cursor = 0
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'\\'}})
+	m = updated.(Model)
+	if cmd == nil || !m.running {
+		t.Fatalf("backslash did not start a peek (running=%v status=%q)", m.running, m.status)
+	}
+	if !strings.Contains(m.status, "running items") {
+		t.Fatalf("status = %q, want running items", m.status)
+	}
+}
+
 func TestMongoSwitchDatabaseKeepsTransaction(t *testing.T) {
 	fake := &fakeSession{info: engine.Info{Database: "app"}, tx: engine.TxInTransaction}
 	m := mongoModel(t, fake)

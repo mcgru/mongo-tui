@@ -32,6 +32,7 @@ const (
 	ActionEditStatement   Action = "edit_statement"
 	ActionCopyCell        Action = "copy_cell"
 	ActionCopyRow         Action = "copy_row"
+	ActionKeyboardLayout  Action = "keyboard_layout"
 
 	// Tree actions. They carry the same meaning as in less: / searches an
 	// object, * edits it.
@@ -70,12 +71,15 @@ var defaultKeys = map[Action]string{
 	ActionEditStatement:   "ctrl+e",
 	ActionCopyCell:        "c",
 	ActionCopyRow:         "C",
+	ActionKeyboardLayout:  "ctrl+l",
 
 	// / searches like less does: it turns the object into a SELECT.
 	ActionSelectTemplate: "/",
 	// p looks inside, * edits: the definition lands in the editor, and Ctrl+J
 	// applies it. . and > paste the selected name into the statement.
-	ActionPeek:           "p",
+	// "\" is an alias for p: it sits just above Enter, next to the Enter that
+	// opens the structure card.
+	ActionPeek:           "p,\\",
 	ActionEditObject:     "*",
 	ActionInsertName:     ".,>",
 	ActionCreateTemplate: "+",

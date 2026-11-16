@@ -228,6 +228,82 @@ func TestInvalidRegexpKeepsThePrompt(t *testing.T) {
 	}
 }
 
+func TestSearchCaseToggleAffectsFutureSearches(t *testing.T) {
+	cols, rows := searchFixtures()
+	m := searchGridModel(t, cols, rows)
+
+	// Case-sensitive by default: ANN does not match ann/anna.
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	m = updated.(Model)
+	m = typeInto(t, m, "ANN")
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	if !strings.Contains(m.status, "not found: /ANN/") {
+		t.Fatalf("status = %q, want not found before the toggle", m.status)
+	}
+
+	m = typeInto(t, m, "i")
+	if !m.searchIgnoreCase || !strings.Contains(m.status, "ignore case") {
+		t.Fatalf("toggle failed (ignore=%v status=%q)", m.searchIgnoreCase, m.status)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	m = updated.(Model)
+	m = typeInto(t, m, "ANN")
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	if !strings.Contains(m.status, "search /ANN/: 1/2") {
+		t.Fatalf("status = %q, want 2 ignore-case matches", m.status)
+	}
+}
+
+func TestSearchCaseToggleDoesNotChangeAppliedSearch(t *testing.T) {
+	cols, rows := searchFixtures()
+	m := searchGridModel(t, cols, rows)
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	m = updated.(Model)
+	m = typeInto(t, m, "ann")
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+
+	m = typeInto(t, m, "i")
+	if m.grid.search.re.MatchString("ANN") {
+		t.Fatal("the toggle changed the already applied search")
+	}
+	if len(m.grid.search.matches) != 2 {
+		t.Fatalf("applied matches = %v, want 2", m.grid.search.matches)
+	}
+}
+
+func TestSearchPromptTypesI(t *testing.T) {
+	cols, rows := searchFixtures()
+	m := searchGridModel(t, cols, rows)
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	m = updated.(Model)
+
+	m = typeInto(t, m, "i")
+	if !m.searchOpen || m.searchInput.Value() != "i" {
+		t.Fatalf("i should be typed into the pattern (open=%v value=%q)", m.searchOpen, m.searchInput.Value())
+	}
+	if m.searchIgnoreCase {
+		t.Fatal("typing i in the prompt must not toggle the mode")
+	}
+}
+
+func TestSearchCaseToggleIsResultOnly(t *testing.T) {
+	cols, rows := searchFixtures()
+	m := searchGridModel(t, cols, rows)
+	m.tab = tabMessages
+
+	m = typeInto(t, m, "i")
+	if m.searchIgnoreCase {
+		t.Fatal("the mode changed outside RESULT")
+	}
+	if m.status != "search mode works in the RESULT pane" {
+		t.Fatalf("status = %q", m.status)
+	}
+}
+
 func TestSearchNotFoundAndEmptyRepeat(t *testing.T) {
 	cols, rows := searchFixtures()
 	m := searchGridModel(t, cols, rows)

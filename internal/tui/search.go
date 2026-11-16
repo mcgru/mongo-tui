@@ -74,7 +74,11 @@ func (m Model) applyGridSearch() (tea.Model, tea.Cmd) {
 		}
 		pattern = m.grid.search.pattern
 	}
-	re, err := regexp.Compile(pattern)
+	expr := pattern
+	if m.searchIgnoreCase {
+		expr = "(?i)" + pattern
+	}
+	re, err := regexp.Compile(expr)
 	if err != nil {
 		m.searchErr = err.Error()
 		return m, nil
@@ -123,6 +127,31 @@ func (m Model) clearGridSearch() (tea.Model, tea.Cmd) {
 	m.searchErr = ""
 	m.status = "search cleared"
 	return m, nil
+}
+
+// toggleSearchCase switches future searches between case-sensitive and
+// ignore-case. Ctrl+I cannot be used: terminals send it as Tab, so the grid
+// uses i, like less's -i option.
+func (m Model) toggleSearchCase() (tea.Model, tea.Cmd) {
+	if m.tab != tabResult {
+		m.status = "search mode works in the RESULT pane"
+		return m, nil
+	}
+	m.searchIgnoreCase = !m.searchIgnoreCase
+	if m.searchIgnoreCase {
+		m.status = "search: ignore case"
+	} else {
+		m.status = "search: case-sensitive"
+	}
+	return m, nil
+}
+
+// searchCaseLabel names the current mode for the prompt and the footer.
+func (m Model) searchCaseLabel() string {
+	if m.searchIgnoreCase {
+		return "ignore case"
+	}
+	return "case-sensitive"
 }
 
 // resetSearch forgets the prompt and any applied search, for disconnects.

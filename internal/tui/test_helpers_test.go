@@ -84,10 +84,12 @@ func (f *fakeSession) statements() []string {
 }
 
 func testOptions() Options {
+	state := config.NewState()
+	state.KeyboardLayout = "us"
 	return Options{
 		CLI:     cli.Options{},
 		Config:  config.Default(),
-		State:   config.NewState(),
+		State:   state,
 		Paths:   config.Paths{StateFile: "/tmp/mongo-tui-test/state.json"},
 		Version: "0.1.0-test",
 	}
