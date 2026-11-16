@@ -134,7 +134,7 @@ PostgreSQL-пакеты удалены в M6: `internal/psql`, `internal/session
 | ED-03 | MUST | Выделение, `Shift+стрелки`, `Ctrl+A` | Тесты редактора | OK |
 | ED-04 | MUST | Выполненный запрос приглушён, помечен ✓/✗, заблокирован | Тесты | OK |
 | ED-05 | MUST | `Ctrl+E` размораживает, `Ctrl+K` удаляет выполненный | Тесты | OK |
-| ED-06 | MUST | Шаблоны `/`, `p`, `*`, `+`, `-`, `=` для коллекции, индекса, view, пользователя | Тесты шаблонов | OK |
+| ED-06 | MUST | Шаблоны `/`, `p`, `+`, `-`, `=`: find для коллекции/view, новый документ `insertOne` на базе и папке Collections, `createIndex`, drop/dropIndex, `collMod`; импорт пользователя на папке Users | Тесты шаблонов | OK |
 | ED-07 | MUST | Курсор после вставки шаблона стоит после предложенного имени | Тесты | OK |
 | ED-08 | SHOULD | Двойной Esc убирает только что вставленный шаблон | Тест | OK |
 
@@ -176,7 +176,7 @@ PostgreSQL-пакеты удалены в M6: `internal/psql`, `internal/session
 | ID | Приоритет | Требование | Проверка | Статус |
 |---|---|---|---|---|
 | TST-01 | MUST | Юнит-тесты на query.Spec, envelope, MQL, flatten, EJSON, миграцию | `go test ./...` | OK |
-| TST-02 | MUST | Docker-кластер MongoDB 8.0 в режиме replica set с фикстурами | `make test-live` | OK |
+| TST-02 | MUST | Docker-кластер MongoDB 8.0 в режиме replica set с фикстурами | `make test-mongo` | OK |
 | TST-03 | MUST | Живые тесты сами пропускаются без `MONGODB_URI` | CI без кластера | OK |
 | TST-04 | MUST | CI: gofmt, vet, build, unit и живой MongoDB job | GitHub Actions | OK |
 | TST-05 | MUST | Ручной прогон от непривилегированного пользователя | Чек-лист | OK |

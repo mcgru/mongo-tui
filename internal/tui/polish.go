@@ -164,7 +164,7 @@ var helpActions = []struct {
 	text   string
 }{
 	{config.ActionRun, "run the selection, or the statement under the cursor"},
-	{config.ActionComplete, "complete a keyword, relation, column or alias"},
+	{config.ActionComplete, "complete databases, collections, methods, fields or operators"},
 	{config.ActionHistory, "query history"},
 	{config.ActionEditStatement, "make an executed statement editable again"},
 	{config.ActionDeleteStatement, "delete the statement under the cursor"},
@@ -182,19 +182,18 @@ var helpActions = []struct {
 	{config.ActionResultShorter, "shorter result pane"},
 	{config.ActionCopyCell, "copy the cell under the cursor"},
 	{config.ActionCopyRow, "copy the whole row as TSV"},
-	{config.ActionSelectTemplate, "table or view: insert a SELECT template, the way / works in less"},
-	{config.ActionPeek, "table or view: run SELECT *, limited to two result screens"},
+	{config.ActionSelectTemplate, "collection or view: insert a find template, the way / works in less"},
+	{config.ActionPeek, "collection or view: run a find limited to two result screens"},
 	{config.ActionInsertName, "insert the selected name where the editor cursor was left"},
-	{config.ActionEditObject, "table, view or role: put an editable definition in the editor"},
-	{config.ActionCreateTemplate, "CREATE skeleton for the selected group or object"},
-	{config.ActionDropTemplate, "DROP skeleton for the selected object"},
-	{config.ActionAlterTemplate, "ALTER skeleton for the selected object"},
+	{config.ActionCreateTemplate, "database or Collections: new document; collection: createIndex; Users: import user"},
+	{config.ActionDropTemplate, "drop the selected collection or index"},
+	{config.ActionAlterTemplate, "collMod template for the selected collection"},
 	{config.ActionCancel, "cancel the running statement"},
 	{config.ActionQuit, "quit"},
 }
 
 const helpFixed = `  Tab / Enter     accept a completion
-  Esc             close a popup
+  Esc             close a popup or the role editor
   Esc, Esc        remove the template that was just inserted (before any edit)
   Shift+arrows    select text in the editor
   Ctrl+A          select everything in the editor
@@ -203,11 +202,10 @@ const helpFixed = `  Tab / Enter     accept a completion
   Right           expand a tree node
   Left            collapse a tree node
   Enter / Space   database: switch the session
-                  schema: default search_path and completion scope
-                  role: SET ROLE for this session
-                  tablespace: default_tablespace for this session
-                  table or view: open the object card
-                  pressing again on a default clears it
+                  collection or view: open the object card
+                  index: show its keys
+                  user: open the role editor
+                  folder: expand it
   Home            first row; pressed again it folds one level up
   End             last row
   PgUp / PgDn     page through results, cards and messages
@@ -217,15 +215,21 @@ gutter: ✓ when it succeeded, ✗ when it failed. The cursor cannot move inside
 — only onto its first character — and its text cannot be edited until the edit
 key above unlocks it. New statements go to the end on a fresh line.
 
-In the object tree the object keys read like this: the select key turns the
-object into a query, the peek key runs a two-screen SELECT *, and the edit key
-puts the object's own definition into the editor — ALTER TABLE for a table,
-CREATE OR REPLACE for a view, ALTER ROLE plus commented grants for a role.
-Nothing is applied until the run key.
+In the object tree the object keys read like this: the select key turns a
+collection or view into a find, the peek key runs a limited find, create adds a
+new-document insertOne on a database or its Collections folder (or a new index
+on a collection), drop removes a collection or index, and alter inserts a
+collMod. On the Users folder the import key adds a user from ~/.mongo*; on a
+user the create key grants read on the current database. Nothing is sent until
+the run key.
+
+The role editor lists databases: Space cycles — / read / readWrite, Ctrl+Space
+cycles every builtin database role, Enter applies the staged set, Esc cancels.
+Roles outside that model stay under OTHER ROLES and are sent back untouched.
 
 The insert key pastes the selected name into the editor where its cursor was
 left and keeps the focus in the tree, adding a space after the name — so a
-column list or a join can be collected row by row. The middle mouse button does
+field list or a filter can be collected row by row. The middle mouse button does
 the same when mouse reporting is on (mouse = true in the config). Arrows, Enter,
 Home/End, PgUp/PgDn and Esc stay fixed: they are context navigation, not
 commands.`
