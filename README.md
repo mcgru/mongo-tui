@@ -12,6 +12,14 @@ repository.
 collection cards, MQL parser, completion, templates, the rename/config
 migration and the removal of the PostgreSQL path are in place.
 
+## Screenshots
+
+![First screen - choose profile (login)](docs/screenshots/Screenshot\ at\ 2026-11-16\ 23-11-23.png)
+
+![You may peek some data from collection](docs/screenshots/Screenshot\ at\ 2026-11-16\ 23-13-12.png)
+
+![Show collection structure and stats](docs/screenshots/Screenshot\ at\ 2026-11-16\ 23-13-36.png)
+
 ## Why
 
 `mongosh` is a capable REPL, but it is still a console: no object tree, no
