@@ -222,7 +222,7 @@ func TestServerFilterClearsEditorAndFocuses(t *testing.T) {
 func TestServerFilterRegexKey(t *testing.T) {
 	m := serverFilterModel(t)
 	m.grid.curCol = 1
-	updated, _ := m.handleMainKey(tea.KeyMsg{}, "ctrl+alt+f")
+	updated, _ := m.handleMainKey(tea.KeyMsg{}, "ctrl+g")
 	m = updated.(Model)
 	if !strings.Contains(m.editor.Value(), `{$regex: "Ann"`) {
 		t.Fatalf("editor = %q, want a regexp filter", m.editor.Value())

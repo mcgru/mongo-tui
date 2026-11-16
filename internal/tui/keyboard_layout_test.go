@@ -42,7 +42,7 @@ func TestNormalizeRussianCommandKeys(t *testing.T) {
 	// the rune instead of the control byte: ctrl+а is the physical ctrl+f.
 	controls := map[string]string{
 		"ctrl+а": "ctrl+f", "ctrl+А": "ctrl+f",
-		"ctrl+ф": "ctrl+a", "ctrl+alt+а": "ctrl+alt+f",
+		"ctrl+ф": "ctrl+a", "ctrl+п": "ctrl+g", "ctrl+П": "ctrl+g",
 		"ctrl+j": "ctrl+j", "ctrl+shift+left": "ctrl+shift+left",
 	}
 	for raw, want := range controls {

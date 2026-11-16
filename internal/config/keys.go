@@ -84,9 +84,9 @@ var defaultKeys = map[Action]string{
 	ActionLoadMore:        "m",
 	ActionLoadAll:         "A",
 	ActionServerSearch:    "ctrl+f",
-	// Ctrl+Shift+F is a desktop shortcut on MATE, so the regexp variant uses
-	// Ctrl+Alt+F. The uppercase alias covers terminals that report the rune.
-	ActionServerSearchRegex: "ctrl+alt+f,ctrl+alt+F",
+	// g for regexp: Ctrl+Alt combinations are unreliable on some desktops.
+	// The uppercase alias covers terminals that report the rune.
+	ActionServerSearchRegex: "ctrl+g,ctrl+G",
 
 	// / searches like less does: it turns the object into a SELECT.
 	ActionSelectTemplate: "/",

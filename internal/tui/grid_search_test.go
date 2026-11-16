@@ -290,6 +290,24 @@ func TestSearchPromptTypesI(t *testing.T) {
 	}
 }
 
+// The physical "/" key types "." in the Russian layout. The grid must open the
+// search for it even when the stored layout is us, since "." has no other job
+// in the RESULT pane.
+func TestPeriodStartsGridSearch(t *testing.T) {
+	for _, layout := range []string{layoutUS, layoutRU} {
+		t.Run(layout, func(t *testing.T) {
+			cols, rows := searchFixtures()
+			m := searchGridModel(t, cols, rows)
+			m.keyboardLayout = layout
+			updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'.'}})
+			m = updated.(Model)
+			if !m.searchOpen {
+				t.Fatalf("layout %s: . did not open the grid search", layout)
+			}
+		})
+	}
+}
+
 func TestSearchCaseToggleIsResultOnly(t *testing.T) {
 	cols, rows := searchFixtures()
 	m := searchGridModel(t, cols, rows)

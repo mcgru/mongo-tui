@@ -144,7 +144,7 @@ far; a new query or a database switch closes the cursor.
 `Ctrl+F` on a RESULT cell turns it into a server filter: the editor is cleared
 and gets `db.<collection>.find({ field: value })` for the collection the result
 came from, with the value as a typed literal (`ObjectId`, `ISODate`, numbers,
-`NumberLong`, `NumberDecimal`, strings, `null`). `Ctrl+Alt+F` wraps the visible
+`NumberLong`, `NumberDecimal`, strings, `null`). `Ctrl+G` wraps the visible
 text in an escaped regexp instead. The cursor lands right after the value, and
 nothing runs until `Ctrl+J`. A result from another database asks to switch
 first; missing values become an empty string to type into.
@@ -203,7 +203,7 @@ the state file.
 - `c` copies the cell, `C` copies the row as TSV through OSC 52.
 - In RESULT `m` appends the next page of a peeked query, `A` loads it up to the
   result limits; `/` searches the loaded rows, `n`/`N` walk the matches.
-- `Ctrl+F` inserts a find filter for the cursor cell, `Ctrl+Alt+F` a regexp;
+- `Ctrl+F` inserts a find filter for the cursor cell, `Ctrl+G` a regexp;
   both clear the editor and leave the query ready to run with `Ctrl+J`.
 - `/`, `p`, `+`, `-`, `=` insert MongoDB templates (in RESULT, `/` searches the
   current column); `.` inserts a name.

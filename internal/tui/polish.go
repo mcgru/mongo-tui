@@ -239,7 +239,9 @@ cursor: Enter applies it, n / N jump to the next / previous match (wrapping),
 and Esc clears the highlight. Searches are ignore-case at startup (like less
 -i); the i key toggles case sensitivity for future searches. Ctrl+I cannot be
 used because terminals send it as Tab. q is an ordinary character in the
-pattern, so it does not leave the search.
+pattern, so it does not leave the search. The physical / key types . in the
+Russian layout; in RESULT that . opens the search too, whatever layout is
+stored (in the tree . still inserts a name).
 
 Peek shows the first 30 rows and keeps the server cursor open: the more key
 appends the next page, the all key drains the cursor up to result_limit_rows

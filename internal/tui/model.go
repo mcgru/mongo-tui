@@ -1010,6 +1010,11 @@ func (m Model) handleMainKey(msg tea.KeyMsg, key string) (tea.Model, tea.Cmd) {
 			return m.openServerFilter(true)
 		case m.keys.Is(config.ActionSelectTemplate, key):
 			return m.openGridSearch()
+		case m.tab == tabResult && key == ".":
+			// The physical "/" key types "." in the Russian layout. The layout
+			// setting normally rewrites it, but a wrong locale must not disable
+			// search in the grid; "." has no other job here.
+			return m.openGridSearch()
 		case m.tab == tabResult && key == "n":
 			return m.jumpGridSearch(true)
 		case m.tab == tabResult && key == "N":
