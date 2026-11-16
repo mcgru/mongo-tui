@@ -14,11 +14,11 @@ migration and the removal of the PostgreSQL path are in place.
 
 ## Screenshots
 
-![First screen - choose profile (login)](docs/screenshots/Screenshot\ at\ 2026-11-16\ 23-11-23.png)
+![First screen - choose profile (login)](docs/screenshots/Screenshot_2026-11-16_23-11-23.png)
 
-![You may peek some data from collection](docs/screenshots/Screenshot\ at\ 2026-11-16\ 23-13-12.png)
+![You may peek some data from collection](docs/screenshots/Screenshot_2026-11-16_23-13-12.png)
 
-![Show collection structure and stats](docs/screenshots/Screenshot\ at\ 2026-11-16\ 23-13-36.png)
+![Show collection structure and stats](docs/screenshots/Screenshot_2026-11-16_23-13-36.png)
 
 ## Why
 
