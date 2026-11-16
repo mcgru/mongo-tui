@@ -273,13 +273,19 @@ func (m Model) layout() (leftW, rightW, resultH, editorH int) {
 func (m Model) viewMain() string {
 	leftW, rightW, resultH, editorH := m.layout()
 
-	left := m.pane(m.objectsTitle(), m.treeLines(leftW-4, resultH+editorH-4), leftW, resultH+editorH, m.focus == focusTree)
-	result := m.pane(m.tabBar(), m.resultLines(rightW-4, resultH-4), rightW, resultH, m.focus == focusGrid)
-	editor := m.pane(m.editorTitle(), m.editorLines(rightW-4), rightW, editorH, m.focus == focusEditor)
+	// The role editor is modal, so the panes behind it lose the focus colour.
+	active := m.roles == nil
+	left := m.pane(m.objectsTitle(), m.treeLines(leftW-4, resultH+editorH-4), leftW, resultH+editorH, active && m.focus == focusTree)
+	result := m.pane(m.tabBar(), m.resultLines(rightW-4, resultH-4), rightW, resultH, active && m.focus == focusGrid)
+	editor := m.pane(m.editorTitle(), m.editorLines(rightW-4), rightW, editorH, active && m.focus == focusEditor)
 	right := lipgloss.JoinVertical(lipgloss.Left, result, editor)
 
 	body := lipgloss.JoinHorizontal(lipgloss.Top, left, right)
-	return lipgloss.JoinVertical(lipgloss.Left, m.headerLine(), body, m.footerLine())
+	view := lipgloss.JoinVertical(lipgloss.Left, m.headerLine(), body, m.footerLine())
+	if m.roles != nil {
+		return m.roleEditorOverlay(view)
+	}
+	return view
 }
 
 // headerLine keeps the database badge visible from every screen of the main
@@ -382,12 +388,8 @@ func (m Model) resultLines(width, height int) []string {
 	return m.grid.lines(width, height)
 }
 
-// cardLines renders the MongoDB collection card, the open user card, or the
-// selected document.
+// cardLines renders the MongoDB collection card or the selected document.
 func (m Model) cardLines(width, height int) []string {
-	if m.mongoUser != nil {
-		return m.mongoUserLines(width, height)
-	}
 	if m.mongoCard != nil {
 		return m.mongoCardLines(width, height)
 	}
@@ -486,61 +488,6 @@ func (m Model) mongoCardLines(width, height int) []string {
 	}
 
 	return window(lines, m.cardOff, m.colOff, height, width)
-}
-
-// mongoUserLines renders the user card: who they are, then an editable role
-// checklist (real roles first, then addable builtin roles on the home database).
-func (m Model) mongoUserLines(width, height int) []string {
-	user := m.mongoUser
-	if user == nil {
-		return []string{dimStyle.Render("select a user in the object tree and press Enter")}
-	}
-
-	headline := user.Username
-	if user.Database != "" {
-		headline += "  ·  db: " + user.Database
-	}
-	lines := []string{titleStyle.Render("USER " + headline), ""}
-
-	if !user.Exists {
-		return append(lines, errorStyle.Render("user not found in "+user.Database))
-	}
-
-	lines = append(lines, dimStyle.Render("ROLES"))
-	if len(m.userRows) == 0 {
-		lines = append(lines, "  "+dimStyle.Render("no roles"))
-	}
-	roleStart := len(lines)
-	for i, row := range m.userRows {
-		check := "[ ]"
-		if row.checked {
-			check = "[x]"
-		}
-		cursor := "  "
-		if i == m.userRoleCursor {
-			cursor = "› "
-		}
-		line := cursor + check + " " + row.ref.DB + ":" + row.ref.Role
-		if !row.current {
-			line += dimStyle.Render("   (add)")
-		} else if i == m.userRoleCursor {
-			line += dimStyle.Render("   (space: remove)")
-		}
-		lines = append(lines, line)
-	}
-
-	lines = append(lines, "", dimStyle.Render("↑↓ role  Space toggle  Enter save  Esc close"))
-	if m.userDirty {
-		lines[len(lines)-1] = warnStyle.Render("unsaved role changes — ") + lines[len(lines)-1]
-	}
-
-	// Keep the highlighted role on screen.
-	off := 0
-	visible := maxInt(1, height)
-	if roleStart+m.userRoleCursor >= visible {
-		off = roleStart + m.userRoleCursor - visible + 1
-	}
-	return window(lines, off, m.colOff, height, width)
 }
 
 func prettyJSONLines(text string) []string {
@@ -661,6 +608,11 @@ func (m Model) footerLine() string {
 func (m Model) footerKeys() string {
 	key := m.keys.Get
 
+	if m.roles != nil {
+		return "↑↓ database  Space cycle  Ctrl+Space all roles  Enter apply  Esc close  " +
+			key(config.ActionQuit) + " quit"
+	}
+
 	switch m.scr {
 	case screenPicker:
 		return "↑↓ choose  Enter connect  f pin  d delete  " +
@@ -750,12 +702,17 @@ func (m Model) pane(title string, lines []string, width, height int, active bool
 		titleText = activeTitle.Render(title)
 	}
 
-	content := []string{titleText, ""}
+	// lipgloss counts padding inside Width, so the text area is two cells
+	// narrower than inner. Clip every line here: a single overlong row would
+	// otherwise wrap, make this pane one line taller than its neighbours and
+	// scroll the header off the screen.
+	textWidth := maxInt(1, inner-2)
+	content := []string{hclip(titleText, 0, textWidth), ""}
 	for _, line := range lines {
 		if len(content) >= height-2 {
 			break
 		}
-		content = append(content, line)
+		content = append(content, hclip(line, 0, textWidth))
 	}
 
 	style := lipgloss.NewStyle().

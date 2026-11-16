@@ -131,7 +131,9 @@ func (t *tree) toggle() *treeNode {
 	node.expanded = true
 	t.rebuild()
 
-	if node.loaded || node.loading {
+	// Only nodes with a loader need a fetch. The root has prebuilt children
+	// and no loader, so returning it here would call a nil load function.
+	if node.load == nil || node.loaded || node.loading {
 		return nil
 	}
 	node.loading = true

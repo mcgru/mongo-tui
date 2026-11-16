@@ -126,11 +126,15 @@ new-document `insertOne` (which creates the collection on the first write,
 inserts drop or dropIndex, `=` inserts collMod; `.` inserts the selected
 collection name as a JSON string.
 
-`Enter` (or `→`) on a **Users** row opens the user in the OBJECT pane: their home
-database and authentication, then a role checklist. `↑↓` move, `Space` toggles a
-grant (existing roles can be revoked, unused built-in roles added on the user's
-home database), `Enter` saves with `updateUser` — the password is untouched — and
-`Esc` closes without saving.
+`Enter` (or `→`) on a **Users** row opens a focused role-editor window over the
+panes. It lists the databases the session can see, the databases where the user
+already has roles, and the current one; unmanaged roles (`root`, `clusterAdmin`,
+custom) appear under OTHER ROLES and are sent back untouched. `↑↓` move, `Space`
+cycles a database through `—`/`read`/`readWrite`, `Ctrl+Space` cycles the full
+built-in set (`read`, `readWrite`, `dbOwner`, `dbAdmin`, `userAdmin`), `Enter`
+applies the staged set with one `updateUser` — the password is untouched — and
+closes, `Esc` discards. `+` on a user row in the tree still grants `read` on the
+current database at once and opens the editor with the fresh grants.
 
 `i` on the **Users** folder imports a MongoDB user from a `~/.mongo*` file: the
 username, password, database and `authSource` are read from the chosen URI. A
