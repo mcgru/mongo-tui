@@ -87,7 +87,7 @@ var actionDoc = map[Action]string{
 	ActionPeek:              "table or view: peek 30 rows; load_more/load_all extend it",
 	ActionEditObject:        "table, view or role: put an editable definition in the editor",
 	ActionInsertName:        "insert the selected name into the editor, focus stays in the tree",
-	ActionCreateTemplate:    "CREATE skeleton for the selected group or object",
+	ActionCreateTemplate:    "RESULT: insertOne template for the open collection; tree: create skeleton",
 	ActionDropTemplate:      "DROP skeleton for the selected object",
 	ActionAlterTemplate:     "ALTER skeleton for the selected object",
 }

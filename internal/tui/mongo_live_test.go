@@ -316,3 +316,100 @@ func TestLiveServerFilterFromCell(t *testing.T) {
 		t.Fatalf("filtered name = %q, want %q", got, want)
 	}
 }
+
+// TestLiveInsertTemplateFromResult builds the "+" template from a real grid and
+// runs it: the collection gets a second document with the typed placeholders.
+func TestLiveInsertTemplateFromResult(t *testing.T) {
+	uri := os.Getenv("MONGODB_URI")
+	if uri == "" {
+		t.Skip("MONGODB_URI is not set")
+	}
+	opts := testOptions()
+	opts.CLI.MongoURI = uri
+	m := New(opts)
+	connected, ok := m.connectCmd("")().(connectedMsg)
+	if !ok {
+		t.Fatal("connect did not return connectedMsg")
+	}
+	updated, _ := m.Update(connected)
+	m = updated.(Model)
+
+	ctx := context.Background()
+	database := m.currentDatabase()
+	collection := fmt.Sprintf("___mongo_tui_insert_%d", time.Now().UnixNano())
+	t.Cleanup(func() {
+		_, _ = m.sess.Execute(context.Background(),
+			fmt.Sprintf(`{"database":%q,"op":"dropCollection","collection":%q}`, database, collection))
+	})
+
+	seed := fmt.Sprintf(`db.%s.insertOne({name: "Ann", qty: 3, createdAt: ISODate("2026-11-16T10:00:00Z"), meta: {color: "red"}, tags: ["a"]})`, collection)
+	if res, err := m.sess.Execute(ctx, seed); err != nil || res.Error {
+		t.Fatalf("seed insert: err=%v res=%+v", err, res)
+	}
+
+	m.editor.SetValue(fmt.Sprintf("db.%s.find({})", collection))
+	m, cmd := press(t, m, tea.KeyCtrlJ)
+	if cmd == nil {
+		t.Fatal("find returned no command")
+	}
+	findMsg := cmd().(execDoneMsg)
+	if findMsg.err != nil || findMsg.result.Error {
+		t.Fatalf("find failed: err=%v res=%+v", findMsg.err, findMsg.result)
+	}
+	updated, _ = m.Update(findMsg)
+	m = updated.(Model)
+	if m.grid == nil || len(m.grid.res.Rows) != 1 {
+		t.Fatalf("grid = %+v, want the seed row", m.grid)
+	}
+
+	m.focus = focusGrid
+	m.tab = tabResult
+	m = m.insertResultDocument()
+	if !strings.Contains(m.editor.Value(), "insertOne({createdAt: ISODate(") {
+		t.Fatalf("editor = %q, want the generated insert", m.editor.Value())
+	}
+
+	m, cmd = press(t, m, tea.KeyCtrlJ)
+	if cmd == nil {
+		t.Fatalf("insert returned no command: status=%q focus=%v running=%v editor=%q messages=%v",
+			m.status, m.focus, m.running, m.editor.Value(), m.messages)
+	}
+	insertMsg := cmd().(execDoneMsg)
+	if insertMsg.err != nil || insertMsg.result.Error {
+		t.Fatalf("insert failed: err=%v res=%+v", insertMsg.err, insertMsg.result)
+	}
+	updated, _ = m.Update(insertMsg)
+	m = updated.(Model)
+
+	countRes, err := m.sess.Execute(ctx, fmt.Sprintf(
+		`{"database":%q,"op":"count","collection":%q,"filter":{}}`, database, collection))
+	if err != nil || countRes.Error {
+		t.Fatalf("count: err=%v res=%+v", err, countRes)
+	}
+	if len(countRes.Rows) != 1 || countRes.Rows[0][0] != "2" {
+		t.Fatalf("count = %+v, want 2 documents", countRes.Rows)
+	}
+
+	findRes, err := m.sess.Execute(ctx, fmt.Sprintf(
+		`{"database":%q,"op":"find","collection":%q,"filter":{"name":""}}`, database, collection))
+	if err != nil || findRes.Error {
+		t.Fatalf("find inserted: err=%v res=%+v", err, findRes)
+	}
+	if len(findRes.Rows) != 1 {
+		t.Fatalf("inserted rows = %+v, want one", findRes.Rows)
+	}
+	index := map[string]int{}
+	for i, column := range findRes.Columns {
+		index[column] = i
+	}
+	row := findRes.Rows[0]
+	if row[index["qty"]] != "0" {
+		t.Fatalf("qty = %q, want 0", row[index["qty"]])
+	}
+	if row[index["meta.color"]] != "" {
+		t.Fatalf("meta.color = %q, want empty", row[index["meta.color"]])
+	}
+	if createdAt := row[index["createdAt"]]; createdAt == "" || createdAt == "NULL" {
+		t.Fatalf("createdAt = %q, want the auto-filled date", createdAt)
+	}
+}

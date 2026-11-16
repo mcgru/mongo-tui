@@ -157,6 +157,21 @@ func (e *editor) SnapToEditable() {
 // line, and leaves the cursor at its end. It returns the statement's start as a
 // rune offset, so the caller can move the cursor inside it.
 func (e *editor) AppendStatement(text string) int {
+	// Close a previous unterminated statement so the splitter does not glue it
+	// to the new template: find({}) followed by insertOne(...) would otherwise
+	// parse as one malformed request.
+	if last := lastNonSpaceRune(e.runes); last >= 0 && e.runes[last] != ';' {
+		e.runes = append(e.runes, 0)
+		copy(e.runes[last+2:], e.runes[last+1:])
+		e.runes[last+1] = ';'
+		if e.cur > last {
+			e.cur++
+		}
+		if e.sel > last {
+			e.sel++
+		}
+	}
+
 	// Undo covers the separating newline as well, so it goes before start.
 	e.autoStart = len(e.runes)
 	if len(e.runes) > 0 && e.runes[len(e.runes)-1] != '\n' {
@@ -171,6 +186,16 @@ func (e *editor) AppendStatement(text string) int {
 	e.autoEnd = len(e.runes)
 	e.autoValid = true
 	return start
+}
+
+// lastNonSpaceRune is the index of the last rune that is not whitespace, or -1.
+func lastNonSpaceRune(runes []rune) int {
+	for i := len(runes) - 1; i >= 0; i-- {
+		if !unicode.IsSpace(runes[i]) {
+			return i
+		}
+	}
+	return -1
 }
 
 // SetCursorOffset puts the cursor at a rune offset in the buffer.

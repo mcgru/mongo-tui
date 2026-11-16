@@ -1018,6 +1018,8 @@ func (m Model) handleMainKey(msg tea.KeyMsg, key string) (tea.Model, tea.Cmd) {
 			return m.openServerFilter(false)
 		case m.tab == tabResult && m.keys.Is(config.ActionServerSearchRegex, key):
 			return m.openServerFilter(true)
+		case m.tab == tabResult && m.keys.Is(config.ActionCreateTemplate, key):
+			return m.insertResultDocument(), nil
 		case m.keys.Is(config.ActionSelectTemplate, key):
 			return m.openGridSearch()
 		case m.tab == tabResult && key == ".":
@@ -1226,6 +1228,20 @@ func (m Model) insertStatementAfter(statement, needle string) Model {
 			m.editor.SetCursorOffset(start + utf8.RuneCountInString(statement[:idx+len(needle)]))
 		}
 	}
+	m.focus = focusEditor
+	m.editor.Focus()
+	m.status = "template inserted"
+	return m
+}
+
+// insertStatementAt appends a skeleton and puts the cursor at a rune offset
+// inside it, for templates whose landing spot is computed while rendering.
+func (m Model) insertStatementAt(statement string, offset int) Model {
+	if trimmed := strings.TrimRight(statement, " \t\r\n"); trimmed != "" && !strings.HasSuffix(trimmed, ";") {
+		statement = trimmed + ";"
+	}
+	start := m.editor.AppendStatement(statement)
+	m.editor.SetCursorOffset(start + offset)
 	m.focus = focusEditor
 	m.editor.Focus()
 	m.status = "template inserted"

@@ -190,7 +190,7 @@ var helpActions = []struct {
 	{config.ActionSelectTemplate, "collection/view: find template; RESULT grid: regexp search"},
 	{config.ActionPeek, "collection or view: run a paged find, 30 rows first (p or the key above Enter)"},
 	{config.ActionInsertName, "insert the selected name where the editor cursor was left"},
-	{config.ActionCreateTemplate, "database or Collections: new document; collection: createIndex; Users: import user"},
+	{config.ActionCreateTemplate, "RESULT: insertOne template; database/Collections: new document; collection: createIndex; Users: import user"},
 	{config.ActionDropTemplate, "drop the selected collection or index"},
 	{config.ActionAlterTemplate, "collMod template for the selected collection"},
 	{config.ActionCancel, "cancel the running statement"},
@@ -255,6 +255,12 @@ wraps the visible text in an escaped regexp. The editor is cleared, the value
 is inserted, and the cursor lands right after it. Null becomes null; a missing
 field leaves an empty string to type into. The filter runs in the current
 database, so a result from another database asks to switch first.
+
+In RESULT the create key inserts db.<collection>.insertOne({...}) for the
+collection the rows came from: every known field gets a typed placeholder,
+createdAt is filled with the current UTC time, and _id is left to the server
+unless it is a custom non-ObjectId key. Nested columns become nested objects,
+and the cursor lands on the first empty value.
 
 Cyrillic command keys always act as the US key on the same physical position
 (з is p, т is n, ь is m, Ф is A, х is [), even when the stored layout is us or

@@ -152,6 +152,13 @@ text in an escaped regexp instead. The cursor lands right after the value, and
 nothing runs until `Ctrl+J`. A result from another database asks to switch
 first; missing values become an empty string to type into.
 
+In the RESULT grid `+` builds `db.<collection>.insertOne({...})` for the
+collection the rows came from: every known field gets a typed placeholder,
+`createdAt` is filled with the current UTC time, and `_id` is left to the server
+unless it is a custom non-ObjectId key. Nested columns become nested objects;
+the cursor lands on the first empty value (preferably inside a string), and
+nothing runs until `Ctrl+J`.
+
 `Enter` (or `→`) on a **Users** row opens a focused role-editor window over the
 panes. It lists the databases the session can see, the databases where the user
 already has roles, and the current one; unmanaged roles (`root`, `clusterAdmin`,
@@ -208,6 +215,8 @@ the state file.
   result limits; `/` searches the loaded rows, `n`/`N` walk the matches.
 - `Ctrl+F` inserts a find filter for the cursor cell, `Ctrl+G` a regexp;
   both clear the editor and leave the query ready to run with `Ctrl+J`.
+- `+` in RESULT inserts an `insertOne` template for the result's collection and
+  puts the cursor on the first empty value.
 - `/`, `p`, `+`, `-`, `=` insert MongoDB templates (in RESULT, `/` searches the
   current column); `.` inserts a name.
 - `Ctrl+Q` quits; `Ctrl+C` cancels a running request, then quits.
