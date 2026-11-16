@@ -594,6 +594,14 @@ func (m Model) messageLines(width, height int) []string {
 // footerLine shows the status and the keys that work right now, so the hint
 // follows the focus instead of listing every binding at once.
 func (m Model) footerLine() string {
+	if m.searchOpen {
+		hint := "   Enter search   Esc cancel"
+		if m.searchErr != "" {
+			hint = "   " + m.searchErr
+		}
+		prompt := strings.TrimRight(m.searchInput.View(), " ")
+		return "/" + prompt + dimStyle.Render(hint)
+	}
 	if m.running {
 		return dimStyle.Render(m.status + "   |   " + m.keys.Get(config.ActionCancel) + " cancel")
 	}
@@ -642,6 +650,10 @@ func (m Model) footerKeys() string {
 				hint := "↑↓ move  PgUp/PgDn document"
 				if m.tab == tabResult {
 					hint = "↑↓←→ move cell  PgUp/PgDn page"
+					if m.grid != nil && m.grid.search != nil {
+						hint += "  n/N match  Esc clear"
+					}
+					hint += "  " + key(config.ActionSelectTemplate) + " search"
 				} else {
 					hint = "↑↓ scroll  ←→ sideways"
 				}

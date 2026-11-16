@@ -126,6 +126,13 @@ new-document `insertOne` (which creates the collection on the first write,
 inserts drop or dropIndex, `=` inserts collMod; `.` inserts the selected
 collection name as a JSON string.
 
+In the **RESULT** grid `/` starts a regexp search in the column under the cursor.
+The footer shows the pattern as in less; `Enter` jumps to the first match on or
+below the current row and centres it, matching cells are highlighted, `n`/`N`
+jump to the next/previous match (wrapping), and `Esc` clears the search. The
+pattern is a Go regexp; `q` is an ordinary character in it, so it does not leave
+the search.
+
 `Enter` (or `→`) on a **Users** row opens a focused role-editor window over the
 panes. It lists the databases the session can see, the databases where the user
 already has roles, and the current one; unmanaged roles (`root`, `clusterAdmin`,
@@ -169,7 +176,8 @@ the state file.
   normally while the editor has focus.
 - `Ctrl+←/→` resize the tree; `Ctrl+↑/↓` move the result/editor divider.
 - `c` copies the cell, `C` copies the row as TSV through OSC 52.
-- `/`, `p`, `+`, `-`, `=` insert MongoDB templates; `.` inserts a name.
+- `/`, `p`, `+`, `-`, `=` insert MongoDB templates (in RESULT, `/` searches the
+  current column); `.` inserts a name.
 - `Ctrl+Q` quits; `Ctrl+C` cancels a running request, then quits.
 
 Every command is rebindable in `[keys]`; the help screen shows the effective

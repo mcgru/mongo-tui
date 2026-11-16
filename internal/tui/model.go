@@ -205,9 +205,14 @@ type Model struct {
 	comp      compState
 	spin      spinner.Model
 	input     textinput.Model
-	editor    editor
-	grid      *grid
-	tree      *tree
+	// searchOpen shows the "/" prompt in the footer; searchInput edits the
+	// pattern and searchErr keeps a regexp error visible while typing.
+	searchOpen  bool
+	searchInput textinput.Model
+	searchErr   string
+	editor      editor
+	grid        *grid
+	tree        *tree
 	// mongoCard is the MongoDB collection card.
 	mongoCard *engine.CollectionCard
 	// roles is the modal role editor for one user; nil when it is closed.
@@ -808,6 +813,10 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.roles != nil {
 		return m.handleRoleEditorKey(key)
 	}
+	// The "/" prompt is modal for the same reason.
+	if m.searchOpen {
+		return m.handleSearchInput(msg)
+	}
 
 	// Esc removes an untouched template in two presses; any other key cancels
 	// the pending second press.
@@ -904,6 +913,22 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case focusTree:
 		return m.handleTreeKey(msg.String())
+	}
+
+	// In the result grid "/" starts a regexp search in the cursor column;
+	// n / N walk the matches and Esc clears the search.
+	if m.focus == focusGrid {
+		switch {
+		case m.keys.Is(config.ActionSelectTemplate, msg.String()):
+			return m.openGridSearch()
+		case m.tab == tabResult && msg.String() == "n":
+			return m.jumpGridSearch(true)
+		case m.tab == tabResult && msg.String() == "N":
+			return m.jumpGridSearch(false)
+		}
+	}
+	if m.focus == focusGrid && msg.String() == "esc" && m.grid != nil && m.grid.search != nil {
+		return m.clearGridSearch()
 	}
 
 	if m.keys.Is(config.ActionCopyCell, msg.String()) {
@@ -1975,6 +2000,7 @@ func (m *Model) closeSession() {
 	m.comp = compState{}
 	m.mongoCard = nil
 	m.closeRoleEditor()
+	m.resetSearch()
 	m.pendingDatabase = ""
 }
 
@@ -1992,6 +2018,9 @@ func (m *Model) resize() {
 	_, rightW, _, editorH := m.layout()
 	m.editor.SetWidth(maxInt(10, rightW-4))
 	m.editor.SetHeight(maxInt(1, editorH-4))
+	if m.searchOpen {
+		m.searchInput.Width = maxInt(20, m.width-30)
+	}
 }
 
 func (m Model) gridHeight() int {

@@ -182,7 +182,7 @@ var helpActions = []struct {
 	{config.ActionResultShorter, "shorter result pane"},
 	{config.ActionCopyCell, "copy the cell under the cursor"},
 	{config.ActionCopyRow, "copy the whole row as TSV"},
-	{config.ActionSelectTemplate, "collection or view: insert a find template, the way / works in less"},
+	{config.ActionSelectTemplate, "collection/view: find template; RESULT grid: regexp search"},
 	{config.ActionPeek, "collection or view: run a find limited to two result screens"},
 	{config.ActionInsertName, "insert the selected name where the editor cursor was left"},
 	{config.ActionCreateTemplate, "database or Collections: new document; collection: createIndex; Users: import user"},
@@ -226,6 +226,11 @@ the run key.
 The role editor lists databases: Space cycles — / read / readWrite, Ctrl+Space
 cycles every builtin database role, Enter applies the staged set, Esc cancels.
 Roles outside that model stay under OTHER ROLES and are sent back untouched.
+
+In the RESULT grid the select key starts a regexp search in the column under the
+cursor: Enter applies it, n / N jump to the next / previous match (wrapping),
+and Esc clears the highlight. q is an ordinary character in the pattern, so it
+does not leave the search.
 
 The insert key pastes the selected name into the editor where its cursor was
 left and keeps the focus in the tree, adding a space after the name — so a

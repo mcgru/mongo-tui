@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"regexp"
 	"strings"
 	"unicode/utf8"
 
@@ -12,11 +13,25 @@ import (
 const maxCellWidth = 28
 
 var (
-	headerStyle   = lipgloss.NewStyle().Bold(true)
-	nullStyle     = lipgloss.NewStyle().Faint(true).Italic(true)
-	cursorCell    = lipgloss.NewStyle().Reverse(true)
-	cursorRowMark = lipgloss.NewStyle().Bold(true)
+	headerStyle      = lipgloss.NewStyle().Bold(true)
+	nullStyle        = lipgloss.NewStyle().Faint(true).Italic(true)
+	cursorCell       = lipgloss.NewStyle().Reverse(true)
+	cursorRowMark    = lipgloss.NewStyle().Bold(true)
+	searchMatchStyle = lipgloss.NewStyle().Bold(true).
+				Foreground(lipgloss.Color("0")).
+				Background(lipgloss.Color("11"))
 )
+
+// gridSearch is an applied search: it is scoped to one column and keeps the
+// matching row numbers in order.
+type gridSearch struct {
+	pattern string
+	re      *regexp.Regexp
+	col     int
+	matches []int
+	cur     int
+	center  bool
+}
 
 // grid renders a ResultSet with a movable cursor and independent scrolling.
 type grid struct {
@@ -27,6 +42,7 @@ type grid struct {
 	rowOff  int
 	curRow  int
 	curCol  int
+	search  *gridSearch
 }
 
 func newGrid(res *engine.Result) *grid {
@@ -113,8 +129,100 @@ func (g *grid) columnEnd(from, width int) int {
 	return to
 }
 
-// currentRowTSV renders the cursor row for the clipboard: NULL becomes an empty
-// field, as in a spreadsheet paste.
+// searchRows returns the rows whose visible text in col matches re. Matching
+// runs on the truncated text, so "found" always means visible in the cell.
+func (g *grid) searchRows(re *regexp.Regexp, col int) []int {
+	if g.empty() || col < 0 || col >= len(g.res.Columns) {
+		return nil
+	}
+	rows := make([]int, 0)
+	for r, row := range g.res.Rows {
+		value := ""
+		if col < len(row) {
+			value = row[col]
+		}
+		if re.MatchString(truncate(cellText(value), g.widths[col])) {
+			rows = append(rows, r)
+		}
+	}
+	return rows
+}
+
+// applySearch scopes a search to the cursor column and jumps to the first match
+// at or below the cursor row, wrapping to the top when needed.
+func (g *grid) applySearch(re *regexp.Regexp, pattern string) (found, wrapped bool, idx, total int) {
+	if g.empty() {
+		return false, false, 0, 0
+	}
+	s := &gridSearch{
+		pattern: pattern,
+		re:      re,
+		col:     g.curCol,
+		matches: g.searchRows(re, g.curCol),
+		cur:     -1,
+	}
+	g.search = s
+	if len(s.matches) == 0 {
+		return false, false, 0, 0
+	}
+	target := 0
+	for i, row := range s.matches {
+		if row >= g.curRow {
+			target = i
+			break
+		}
+	}
+	wrapped = s.matches[target] < g.curRow
+	g.gotoMatch(target)
+	return true, wrapped, target, len(s.matches)
+}
+
+// jumpMatch moves to the next (forward) or previous match, wrapping around.
+func (g *grid) jumpMatch(forward bool) (found, wrapped bool, idx, total int) {
+	s := g.search
+	if s == nil || len(s.matches) == 0 {
+		return false, false, 0, 0
+	}
+	target := -1
+	if forward {
+		for i, row := range s.matches {
+			if row > g.curRow {
+				target = i
+				break
+			}
+		}
+		if target < 0 {
+			target = 0
+			wrapped = true
+		}
+	} else {
+		for i := len(s.matches) - 1; i >= 0; i-- {
+			if s.matches[i] < g.curRow {
+				target = i
+				break
+			}
+		}
+		if target < 0 {
+			target = len(s.matches) - 1
+			wrapped = true
+		}
+	}
+	g.gotoMatch(target)
+	return true, wrapped, target, len(s.matches)
+}
+
+// gotoMatch puts the cursor on a match and asks the renderer to centre the row.
+func (g *grid) gotoMatch(i int) {
+	s := g.search
+	if s == nil || i < 0 || i >= len(s.matches) {
+		return
+	}
+	s.cur = i
+	g.curRow = s.matches[i]
+	g.curCol = s.col
+	s.center = true
+}
+
 func (g *grid) currentRowTSV() string {
 	if g.empty() || g.curRow >= len(g.res.Rows) {
 		return ""
@@ -157,6 +265,9 @@ func (g *grid) lines(width, height int) []string {
 		return nil
 	}
 
+	if g.search != nil && g.search.center {
+		g.scrollColIntoView(width - 2)
+	}
 	from, to := g.visibleColumns(width - 2)
 	total := 0
 	for c := from; c < to; c++ {
@@ -174,6 +285,11 @@ func (g *grid) lines(width, height int) []string {
 
 	visibleRows := height - 2
 	g.scrollRows(visibleRows)
+	if g.search != nil && g.search.center {
+		maxOff := maxInt(0, len(g.res.Rows)-visibleRows)
+		g.rowOff = clampInt(g.curRow-visibleRows/2, 0, maxOff)
+		g.search.center = false
+	}
 
 	for r := g.rowOff; r < len(g.res.Rows) && len(out) < height; r++ {
 		row := g.res.Rows[r]
@@ -183,7 +299,7 @@ func (g *grid) lines(width, height int) []string {
 			if c < len(row) {
 				value = row[c]
 			}
-			cells = append(cells, cellView(value, g.widths[c], r == g.curRow && c == g.curCol))
+			cells = append(cells, g.cellViewAt(c, value, r == g.curRow && c == g.curCol))
 		}
 		mark := "  "
 		if r == g.curRow {
@@ -225,6 +341,69 @@ func cellText(value string) string {
 		return "—"
 	}
 	return value
+}
+
+// cellViewAt renders one cell, highlighting regexp matches in the searched
+// column. A matching cell under the cursor keeps the reverse cursor style.
+func (g *grid) cellViewAt(col int, value string, selected bool) string {
+	width := g.widths[col]
+	if g.search != nil && col == g.search.col && g.search.re != nil {
+		text := truncate(cellText(value), width)
+		if g.search.re.MatchString(text) {
+			return highlightCell(text, width, selected, g.search.re)
+		}
+	}
+	return cellView(value, width, selected)
+}
+
+// cellSegment is a piece of a cell: match says whether the search regexp
+// matched it.
+type cellSegment struct {
+	text  string
+	match bool
+}
+
+// matchSegments splits text into matched and unmatched pieces.
+func matchSegments(text string, re *regexp.Regexp) []cellSegment {
+	spans := re.FindAllStringIndex(text, -1)
+	if len(spans) == 0 {
+		return []cellSegment{{text: text}}
+	}
+	segments := make([]cellSegment, 0, len(spans)*2+1)
+	last := 0
+	for _, span := range spans {
+		if span[0] > last {
+			segments = append(segments, cellSegment{text: text[last:span[0]]})
+		}
+		if span[1] > span[0] {
+			segments = append(segments, cellSegment{text: text[span[0]:span[1]], match: true})
+		}
+		last = span[1]
+	}
+	if last < len(text) {
+		segments = append(segments, cellSegment{text: text[last:]})
+	}
+	return segments
+}
+
+// highlightCell marks every regexp match inside already truncated text and pads
+// the result to the cell width.
+func highlightCell(text string, width int, selected bool, re *regexp.Regexp) string {
+	if selected {
+		return cursorCell.Render(pad(text, width))
+	}
+	var b strings.Builder
+	for _, segment := range matchSegments(text, re) {
+		if segment.match {
+			b.WriteString(searchMatchStyle.Render(segment.text))
+		} else {
+			b.WriteString(segment.text)
+		}
+	}
+	if used := displayWidth(text); used < width {
+		b.WriteString(strings.Repeat(" ", width-used))
+	}
+	return b.String()
 }
 
 func cellView(value string, width int, selected bool) string {
