@@ -109,6 +109,9 @@ type Pager interface {
 	// FetchPage reads the next page; all reads until the cursor or the result
 	// limits are exhausted. The returned Result carries only the new rows.
 	FetchPage(ctx context.Context, all bool) (res Result, hasMore bool, err error)
+	// ClosePageOf releases the last paged cursor if it belongs to db.collection;
+	// an empty collection means any cursor. Safe with nothing open.
+	ClosePageOf(database, collection string)
 }
 
 // IndexInfo is one index of a MongoDB collection.

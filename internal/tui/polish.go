@@ -246,7 +246,8 @@ stored (in the tree . still inserts a name).
 Peek shows the first 30 rows and keeps the server cursor open: the more key
 appends the next page, the all key drains the cursor up to result_limit_rows
 and result_limit_bytes. The search covers the rows loaded so far. A new query
-or a database switch closes the cursor.
+or a database switch closes the cursor; opening another collection releases the
+grid and its cursor, and a large result is handed back to the OS.
 
 The server-filter keys turn the cell under the cursor into a find for the same
 collection: the exact key inserts the value as a typed literal, the regexp key

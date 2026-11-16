@@ -356,7 +356,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.scr = screenMain
 		m.err = nil
 		m.focus = focusTree
-		m.grid = nil
+		m.releaseResult()
 		m.mongoCard = nil
 		m.closeRoleEditor()
 		m.openObject = ""
@@ -439,7 +439,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.messages = []string{fmt.Sprintf("ok, %d ms", msg.duration.Milliseconds())}
 		}
 
-		m.grid = newGrid(&msg.result)
+		m.replaceGrid(&msg.result)
 		if m.isMongo() {
 			// A query result takes over the OBJECT pane; the collection card is
 			// one Enter away in the tree.
@@ -484,10 +484,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.grid == nil {
-			m.grid = newGrid(&msg.result)
-		} else {
-			m.grid.appendResult(&msg.result)
+			// The grid was released while this page was loading (for example,
+			// another collection was opened); do not resurrect it.
+			m.pageMore = false
+			m.status = "page dropped: result was released"
+			return m, nil
 		}
+		m.grid.appendResult(&msg.result)
 		m.pageMore = msg.more
 
 		total := 0
@@ -523,8 +526,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = "switch failed"
 			return m, nil
 		}
-		m.grid = nil
-		m.pageMore = false
+		m.releaseResult()
 		m.mongoCard = nil
 		m.closeRoleEditor()
 		m.openObject = ""
@@ -631,6 +633,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		card := msg.card
+		// Opening another collection abandons the grid and its live cursor; the
+		// same collection keeps both so paging can continue after the card.
+		var closeCmd tea.Cmd
+		if database, collection := m.resultSource(); collection != "" &&
+			(database != card.Database || collection != card.Collection) {
+			m.releaseResult()
+			closeCmd = m.closePageCmd(database, collection)
+		}
 		m.mongoCard = &card
 		if card.Exists {
 			m.openObject = card.Database + "." + card.Collection
@@ -642,7 +652,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.cardOff = 0
 		m.colOff = 0
 		m.tab = tabObject
-		return m, nil
+		return m, closeCmd
 
 	case userCardMsg:
 		if msg.err != nil {
@@ -2008,6 +2018,11 @@ func (m Model) startRun() (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// A large old grid would double the heap while the new result is built; the
+	// engine closes the cursor itself when the request starts.
+	if m.grid != nil && resultBytes(m.grid.res) >= releaseFreeBytes {
+		m.releaseResult()
+	}
 	m.running = true
 	m.pageMore = false
 	if len(statements) > 1 {

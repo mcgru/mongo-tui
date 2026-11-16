@@ -21,6 +21,8 @@ type fakePager struct {
 	pageMore    []bool
 	fetchErr    error
 	fetches     []bool
+	closed      int
+	closedScope string
 }
 
 func (f *fakePager) RunPaged(_ context.Context, request string, pageSize int) (engine.Result, bool, error) {
@@ -51,6 +53,13 @@ func (f *fakePager) FetchPage(_ context.Context, all bool) (engine.Result, bool,
 		f.pageMore = f.pageMore[1:]
 	}
 	return res, more, nil
+}
+
+func (f *fakePager) ClosePageOf(database, collection string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.closed++
+	f.closedScope = database + "." + collection
 }
 
 func pagedModel(t *testing.T, p *fakePager) (Model, *treeNode) {
@@ -206,6 +215,89 @@ func TestCyrillicLoadPageKeys(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// Opening a card for another collection abandons the old grid and kills its
+// server cursor; the same collection keeps both so paging can continue.
+func TestCardSwitchReleasesGridAndCursor(t *testing.T) {
+	p := &fakePager{}
+	m, _ := pagedModel(t, p)
+	m.grid = newGrid(&engine.Result{
+		Columns:    []string{"_id"},
+		Rows:       [][]string{{"1"}},
+		Documents:  [][]byte{[]byte(`{"_id":1}`)},
+		Database:   "app",
+		Collection: "items",
+	})
+	m.pageMore = true
+
+	updated, cmd := m.Update(mongoCardMsg{card: engine.CollectionCard{
+		Database: "app", Collection: "other", Exists: true,
+	}})
+	m = updated.(Model)
+	if m.grid != nil || m.pageMore {
+		t.Fatalf("grid=%v pageMore=%v after switching collections, want both released", m.grid, m.pageMore)
+	}
+	if cmd == nil {
+		t.Fatal("no command to close the abandoned cursor")
+	}
+	_ = cmd()
+	if p.closed != 1 || p.closedScope != "app.items" {
+		t.Fatalf("closed=%d scope=%q, want 1 app.items", p.closed, p.closedScope)
+	}
+}
+
+func TestCardSameCollectionKeepsGrid(t *testing.T) {
+	p := &fakePager{}
+	m, _ := pagedModel(t, p)
+	m.grid = newGrid(&engine.Result{
+		Columns:    []string{"_id"},
+		Rows:       [][]string{{"1"}},
+		Documents:  [][]byte{[]byte(`{"_id":1}`)},
+		Database:   "app",
+		Collection: "items",
+	})
+	m.pageMore = true
+
+	updated, cmd := m.Update(mongoCardMsg{card: engine.CollectionCard{
+		Database: "app", Collection: "items", Exists: true,
+	}})
+	m = updated.(Model)
+	if m.grid == nil || !m.pageMore {
+		t.Fatalf("grid=%v pageMore=%v for the same collection, want both kept", m.grid, m.pageMore)
+	}
+	if cmd != nil {
+		t.Fatal("same collection must not close the cursor")
+	}
+	if p.closed != 0 {
+		t.Fatalf("ClosePageOf calls = %d, want 0", p.closed)
+	}
+}
+
+// A large result is dropped before a new query starts, so the old heap does not
+// double while the response is built.
+func TestStartRunReleasesLargeGrid(t *testing.T) {
+	oldThreshold := releaseFreeBytes
+	releaseFreeBytes = 1
+	defer func() { releaseFreeBytes = oldThreshold }()
+
+	p := &fakePager{}
+	m, _ := pagedModel(t, p)
+	m.grid = newGrid(&engine.Result{
+		Columns:    []string{"_id"},
+		Rows:       [][]string{{"1"}},
+		Documents:  [][]byte{[]byte(`{"_id":1}`)},
+		Database:   "app",
+		Collection: "items",
+	})
+	m.editor.SetValue("db.items.find({})")
+	m.focus = focusEditor
+
+	updated, _ := m.startRun()
+	m = updated.(Model)
+	if m.grid != nil {
+		t.Fatalf("grid survived the start of a new query: %+v", m.grid)
 	}
 }
 

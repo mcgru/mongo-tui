@@ -115,6 +115,23 @@ func (s *Session) FetchPage(ctx context.Context, all bool) (engine.Result, bool,
 	return res, more, nil
 }
 
+// ClosePageOf releases the cursor of the last paged read when it belongs to
+// db.collection. An empty collection means any cursor. A new query or a
+// database switch does this on its own; the UI calls it when the grid is
+// abandoned without running anything.
+func (s *Session) ClosePageOf(database, collection string) {
+	s.reqMu.Lock()
+	defer s.reqMu.Unlock()
+
+	if s.page == nil {
+		return
+	}
+	if collection != "" && (s.page.database != database || s.page.collection != collection) {
+		return
+	}
+	s.closePageLocked()
+}
+
 // readPageLocked drains up to one page from the cursor. It must run with reqMu
 // held. A page that hits the row or byte limit stops there and marks the result
 // truncated; the cursor is closed by the caller.

@@ -101,3 +101,27 @@ func TestLivePagedHonoursQueryLimit(t *testing.T) {
 		t.Fatal("paging continued past the query limit")
 	}
 }
+
+// Closing a cursor is scoped: a stale request for another collection must not
+// kill the page that is currently open.
+func TestLiveClosePageOf(t *testing.T) {
+	ctx := context.Background()
+	s := liveSession(t, ConnectOptions{})
+	db := newTestDB(t, s)
+	pagingDocs(t, s, db, 70)
+	request := env(db, `"op":"find","collection":"items","sort":{"_id":1}`)
+
+	if _, more, err := s.RunPaged(ctx, request, 30); err != nil || !more {
+		t.Fatalf("RunPaged: err=%v more=%v", err, more)
+	}
+
+	s.ClosePageOf(db, "other")
+	if _, more, err := s.FetchPage(ctx, false); err != nil || !more {
+		t.Fatalf("a foreign ClosePageOf killed the cursor: err=%v more=%v", err, more)
+	}
+
+	s.ClosePageOf(db, "items")
+	if _, _, err := s.FetchPage(ctx, false); err == nil {
+		t.Fatal("ClosePageOf of the source did not release the cursor")
+	}
+}

@@ -139,7 +139,10 @@ Paging keeps the server cursor open instead of loading a whole collection. Peek
 shows the first 30 rows; `m` appends the next page, and `A` drains the cursor up
 to `result_limit_rows` and `result_limit_bytes`, stopping with a truncated
 status instead of growing without bound. The search covers the rows loaded so
-far; a new query or a database switch closes the cursor.
+far; a new query or a database switch closes the cursor. Opening a card for
+another collection also drops the old grid and kills its cursor, and a large
+result (8 MiB or more) is handed back to the OS, so a peeked table does not
+keep the host's memory after you move on.
 
 `Ctrl+F` on a RESULT cell turns it into a server filter: the editor is cleared
 and gets `db.<collection>.find({ field: value })` for the collection the result
