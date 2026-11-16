@@ -13,6 +13,13 @@ import (
 // StateVersion is the on-disk format version of state.json.
 const StateVersion = 1
 
+// Layout stores the pane sizes as percentages: the object tree width and the
+// result pane height. It is machine-written state, not hand-edited config.
+type Layout struct {
+	LeftPct   int `json:"left_pct,omitempty"`
+	ResultPct int `json:"result_pct,omitempty"`
+}
+
 // Profile is a saved connection without any secret in it.
 type Profile struct {
 	ID    string `json:"id"`
@@ -26,7 +33,9 @@ type Profile struct {
 	// SourceFile is the path of the ~/.mongo* file this profile was imported
 	// from. It is not a secret: the password is re-read from that file at
 	// connect time, .pgpass-style, and never written to state.
-	SourceFile      string     `json:"source_file,omitempty"`
+	SourceFile string `json:"source_file,omitempty"`
+	// Layout overrides the global pane sizes for this profile.
+	Layout          *Layout    `json:"layout,omitempty"`
 	Host            string     `json:"host,omitempty"`
 	Port            int        `json:"port,omitempty"`
 	Database        string     `json:"database,omitempty"`
@@ -44,6 +53,9 @@ type Profile struct {
 type State struct {
 	Version  int       `json:"version"`
 	Profiles []Profile `json:"profiles"`
+	// Layout is the default for sessions without a saved profile. A profile's
+	// own Layout wins when it has one.
+	Layout *Layout `json:"layout,omitempty"`
 }
 
 // NewState returns an empty state at the current version.

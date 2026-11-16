@@ -174,9 +174,11 @@ type Model struct {
 	mongoURI  string
 	profileID string
 	readOnly  bool
-	// leftPct and resultPct size the panes; Ctrl+arrows change them.
+	// leftPct and resultPct size the panes; Ctrl+arrows change them and the
+	// result is remembered in state.json. layoutSeq drops stale save ticks.
 	leftPct   int
 	resultPct int
+	layoutSeq int
 	// pendingCursor is the tree row to select once its branch has loaded, used
 	// after a database switch rebuilt the tree.
 	pendingCursor string
@@ -261,6 +263,7 @@ func New(opts Options) Model {
 		leftPct:   defaultLeftPct,
 		resultPct: defaultResultPct,
 	}
+	m.applyLayout(opts.State.Layout)
 
 	for _, p := range opts.State.Sorted() {
 		m.profiles = append(m.profiles, p)
@@ -308,6 +311,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.resize()
 		return m, nil
 
+	case layoutSaveMsg:
+		if msg.seq != m.layoutSeq {
+			return m, nil
+		}
+		if err := m.opts.State.Save(m.opts.Paths.StateFile); err != nil {
+			m.status = "layout not saved: " + err.Error()
+		}
+		return m, nil
+
 	case spinner.TickMsg:
 		if m.scr != screenConnecting {
 			return m, nil
@@ -341,6 +353,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.pendingOpen = ""
 		m.pendingWaiting = ""
 		m.pendingFinal = ""
+		m.applyLayout(m.layoutForProfile(msg.profileID))
 		m.buildTree()
 		m.status = m.rememberConnection(msg)
 		m.editor.ClearMarks()
@@ -624,12 +637,14 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
 	if m.keys.Is(config.ActionQuit, key) {
+		m.saveLayoutNow()
 		return m, tea.Quit
 	}
 	if m.keys.Is(config.ActionCancel, key) {
 		if m.scr == screenMain && m.running {
 			return m, m.cancelCmd()
 		}
+		m.saveLayoutNow()
 		return m, tea.Quit
 	}
 
@@ -787,6 +802,7 @@ func (m Model) handlePickerKey(key string) (tea.Model, tea.Cmd) {
 	case m.keys.Get(config.ActionImportProfiles):
 		return m.openImportFiles(false)
 	case "q":
+		m.saveLayoutNow()
 		return m, tea.Quit
 	}
 	return m, nil
@@ -883,22 +899,26 @@ func (m Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case m.keys.Is(config.ActionLeftWider, key):
 		m.leftPct = clampInt(m.leftPct+resizeStep, minLeftPct, maxLeftPct)
 		m.resize()
-		return m, nil
+		cmd := m.rememberLayout()
+		return m, cmd
 
 	case m.keys.Is(config.ActionLeftNarrower, key):
 		m.leftPct = clampInt(m.leftPct-resizeStep, minLeftPct, maxLeftPct)
 		m.resize()
-		return m, nil
+		cmd := m.rememberLayout()
+		return m, cmd
 
 	case m.keys.Is(config.ActionResultTaller, key):
 		m.resultPct = clampInt(m.resultPct+resizeStep, minResultPct, maxResultPct)
 		m.resize()
-		return m, nil
+		cmd := m.rememberLayout()
+		return m, cmd
 
 	case m.keys.Is(config.ActionResultShorter, key):
 		m.resultPct = clampInt(m.resultPct-resizeStep, minResultPct, maxResultPct)
 		m.resize()
-		return m, nil
+		cmd := m.rememberLayout()
+		return m, cmd
 	}
 
 	switch m.focus {
@@ -1992,6 +2012,7 @@ func (m Model) rememberConnection(msg connectedMsg) string {
 }
 
 func (m *Model) closeSession() {
+	m.saveLayoutNow()
 	if m.sess != nil {
 		m.sess.Close()
 		m.sess = nil

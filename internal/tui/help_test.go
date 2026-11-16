@@ -20,7 +20,7 @@ func TestMongoHelpMatchesTheProduct(t *testing.T) {
 			t.Fatalf("help still mentions %q:\n%s", stale, view)
 		}
 	}
-	for _, want := range []string{"role editor", "collMod", "insertOne", "OTHER ROLES", "regexp search", "n / N"} {
+	for _, want := range []string{"role editor", "collMod", "insertOne", "OTHER ROLES", "regexp search", "n / N", "sizes are saved"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("help is missing %q:\n%s", want, view)
 		}

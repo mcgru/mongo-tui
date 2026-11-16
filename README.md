@@ -174,7 +174,9 @@ the state file.
 - `Tab`/`Shift+Tab` focus; `]`/`[` are the only RESULT/OBJECT/MESSAGES switchers.
   In the right pane `←`/`→` scroll wide output sideways, not tabs; `[`/`]` type
   normally while the editor has focus.
-- `Ctrl+←/→` resize the tree; `Ctrl+↑/↓` move the result/editor divider.
+- `Ctrl+←/→` resize the tree; `Ctrl+↑/↓` move the result/editor divider. Sizes
+  are remembered in `state.json` — per saved profile, with a global fallback for
+  ad-hoc URIs.
 - `c` copies the cell, `C` copies the row as TSV through OSC 52.
 - `/`, `p`, `+`, `-`, `=` insert MongoDB templates (in RESULT, `/` searches the
   current column); `.` inserts a name.
@@ -198,8 +200,9 @@ bindings.
 ## Configuration and migration
 
 Config lives in `$XDG_CONFIG_HOME/mongo-tui/config.toml` (usually
-`~/.config/mongo-tui/config.toml`). Profiles and connection history live in
-`$XDG_STATE_HOME/mongo-tui/state.json`; no password is ever written there.
+`~/.config/mongo-tui/config.toml`). Profiles, connection history and pane sizes
+live in `$XDG_STATE_HOME/mongo-tui/state.json`; no password is ever written
+there.
 
 On the first start after the rename, the old `psql-tui` config and state are
 copied into the new locations. New files are never overwritten, the old files

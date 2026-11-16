@@ -209,6 +209,8 @@ const helpFixed = `  Tab / Enter     accept a completion
   Home            first row; pressed again it folds one level up
   End             last row
   PgUp / PgDn     page through results, cards and messages
+  Ctrl+←/→        resize the tree; Ctrl+↑/↓ move the result/editor divider
+                  (sizes are saved for the profile or globally)
 
 A statement that already ran stays in the buffer, dimmed and marked in the
 gutter: ✓ when it succeeded, ✗ when it failed. The cursor cannot move inside it
@@ -281,6 +283,7 @@ func (m *Model) saveProfile(label string) {
 		Engine:          "mongo",
 		URI:             m.mongoURI,
 		ReadOnlyDefault: m.readOnly,
+		Layout:          &config.Layout{LeftPct: m.leftPct, ResultPct: m.resultPct},
 	}
 	m.opts.State.Upsert(profile)
 	if err := m.opts.State.Save(m.opts.Paths.StateFile); err != nil {
